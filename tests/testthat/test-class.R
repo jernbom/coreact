@@ -1,13 +1,13 @@
 test_that("new_coreact_data creates valid object", {
-  mat <- Matrix::Matrix(matrix(c(1,0,1,0), nrow=2), sparse=TRUE)
-  meta <- data.frame(id = c("A", "B"))
+  mat <- Matrix::Matrix(matrix(c(1,1,1,0,0,0), nrow=3, byrow = TRUE), sparse=TRUE)
+  meta <- data.frame(id = c("A", "B", "C"))
 
   obj <- new_coreact_data(mat, meta, name = "Test")
 
   expect_s3_class(obj, "coreact_data")
-  expect_equal(obj$n_features, 2)
+  expect_equal(obj$n_features, 3)
   expect_equal(obj$n_samples, 2)
-  expect_equal(as.numeric(obj$prevalence), c(1, 1)) # Row sums
+  expect_equal(as.numeric(obj$prevalence), c(2, 1, 0)) # Row sums
 })
 
 test_that("new_coreact_data catches errors", {

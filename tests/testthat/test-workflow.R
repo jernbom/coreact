@@ -14,8 +14,8 @@ test_that("run_coreact handles swapping for efficiency", {
   meta_y <- data.frame(id=c("Y1", "Y2"))
   obj_y <- new_coreact_data(mat_y, meta_y) # IDs idx_y=1,2
 
-  # Run
-  res <- run_coreact(obj_x, obj_y, n_cores = 1, chunk_size=10, filter_config=list(min_intersection=1))
+  # Run and check message indicating swap.
+  expect_message(res <- run_coreact(obj_x, obj_y, n_cores = 1, chunk_size=10, filter_config=list(min_intersection=1)), "Optimizing: Swapping X and Y for load balancing")
 
   # Check results
   # X1 (1,1) matches Y1 (1,1). Should be idx_x=1, idx_y=1.
@@ -46,6 +46,8 @@ test_that("coreact_pipeline runs end-to-end", {
     path_y = in_y,
     out_path = out_res,
     min_prevalence = 0, # Keep everything
+    filter_config = list(), # Keep everything
+    fdr_threshold = 1, # Keep everything
     n_cores = 1
   )
 
