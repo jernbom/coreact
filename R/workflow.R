@@ -34,22 +34,11 @@ coreact_pipeline <- function(paths,
   if (length(paths) != 2 && !is.character(paths)) stop("Argument 'paths' must be a character vector of length 2.")
   if (length(names) != 2 && !is.character(names)) stop("Argument 'names' must be a character vector of length 2.")
 
-  # Helper: Resolve arguments that can be shared or specific (list vs vector)
-  resolve_xy <- function(val, arg_name) {
-    if (is.list(val)) {
-      if (length(val) == 1) return(list(x = val[[1]], y = val[[1]]))
-      if (length(val) == 2) return(list(x = val[[1]], y = val[[2]]))
-      stop(sprintf("Argument '%s' provided as a list must be length 1 or 2.", arg_name))
-    } else {
-      # Atomic vector (or NULL): Recycle for both
-      return(list(x = val, y = val))
-    }
-  }
+  # Resolve args
+  m_cols <- resolve_xy_args(meta_cols, "meta_cols")
+  f_ids  <- resolve_xy_args(feature_ids, "feature_ids")
 
-  m_cols <- resolve_xy(meta_cols, "meta_cols")
-  f_ids  <- resolve_xy(feature_ids, "feature_ids")
-
-  # Prevalence recycling
+  # Prevalence recycling (numeric vector logic differs from resolve_xy_args list logic)
   if (length(min_prevalence) > 2) stop("min_prevalence must have length 1 or 2.")
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
 
@@ -80,28 +69,8 @@ coreact_pipeline <- function(paths,
   }
 
   # --- 4. Pre-Filtering ---
-  # Helper to filter an object on prevalence
-  prev_filter <- function(obj, thresh) {
-    if (thresh <= 0) return(obj)
-
-    # Determine cutoff: Absolute vs Percentage
-    # If 0 < thresh < 1: Treat as percentage of total samples.
-    # If thresh >= 1: Treat as absolute count.
-    if (thresh < 1) {
-      cutoff <- ceiling(thresh * ncol(obj$mat))
-    } else {
-      cutoff <- thresh
-    }
-
-    prev <- Matrix::rowSums(obj$mat > 0)
-    keep <- prev >= cutoff
-
-    if (sum(keep) == 0) stop(sprintf("Filter removed all features from %s (Cutoff: %s).", obj$name, cutoff))
-    obj[keep, ] # Uses the S3 subsetting method
-  }
-
-  obj_x <- prev_filter(obj_x, min_prevalence[1])
-  obj_y <- prev_filter(obj_y, min_prevalence[2])
+  obj_x <- filter_by_prevalence(obj_x, min_prevalence[1])
+  obj_y <- filter_by_prevalence(obj_y, min_prevalence[2])
 
   gc()
 
@@ -154,11 +123,6 @@ run_coreact <- function(data_x,
                         filter_config = list(min_intersection = 1)) {
 
   # --- 1. Swap Optimization ---
-  # Strategy: Chunk the LARGER dataset.
-  # If X is small (10 rows) and Y is huge (1M rows), 1 chunk of X results in
-  # a calculation of (10 x N) * (N x 1M) -> 10 x 1M dense matrix (Huge memory).
-  # If we swap, we chunk the 1M rows. Each chunk is small, memory is managed.
-
   swapped <- FALSE
   if (nrow(data_x$mat) < nrow(data_y$mat)) {
     message("Optimizing: Swapping X and Y for load balancing...")
@@ -187,8 +151,6 @@ run_coreact <- function(data_x,
   chunks <- split(1:n_features_x, ceiling(seq_along(1:n_features_x) / chunk_size))
 
   run_fun <- function(idx) {
-    # Note: data_x is the object being chunked.
-    # idx refers to rows in the CURRENT data_x.
     worker_chunk_calc(
       idx_x_chunk = idx,
       mat_x_chunk = data_x$mat[idx, , drop=FALSE],
@@ -220,24 +182,11 @@ run_coreact <- function(data_x,
   final_df <- data.table::rbindlist(res) %>% tibble::as_tibble()
 
   # --- 5. Map Indices to IDs ---
-  # At this moment:
-  # 'idx_x' refers to rows of the CURRENT data_x
-  # 'idx_y' refers to rows of the CURRENT data_y
-  # The matrix rownames contain the Feature IDs.
-
   final_df$feature_x <- rownames(data_x$mat)[final_df$idx_x]
   final_df$feature_y <- rownames(data_y$mat)[final_df$idx_y]
 
   # --- 6. Handle Un-Swapping ---
   if (swapped) {
-    # If we swapped:
-    # data_x holds the Original Y data.
-    # data_y holds the Original X data.
-    # Therefore:
-    # column 'feature_x' actually contains IDs from Original Y.
-    # column 'feature_y' actually contains IDs from Original X.
-    # We must rename them to restore the user's expected order (X, Y).
-
     final_df <- dplyr::rename(final_df,
                               idx_x_tmp = idx_x, idx_y_tmp = idx_y,
                               size_x_tmp = size_x, size_y_tmp = size_y,
