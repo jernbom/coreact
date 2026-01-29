@@ -38,7 +38,7 @@ coreact_pipeline <- function(paths,
   m_cols <- resolve_xy_args(meta_cols, "meta_cols")
   f_ids  <- resolve_xy_args(feature_ids, "feature_ids")
 
-  # Prevalence recycling (numeric vector logic differs from resolve_xy_args list logic)
+  # Prevalence recycling
   if (length(min_prevalence) > 2) stop("min_prevalence must have length 1 or 2.")
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
 
@@ -95,7 +95,7 @@ coreact_pipeline <- function(paths,
     }
   }
 
-  # Write
+  # Write Main Interactions File
   if (nrow(results) == 0) warning("No significant results found. Writing empty file.")
 
   message(sprintf("Writing results to %s ...", out_path))
@@ -104,6 +104,29 @@ coreact_pipeline <- function(paths,
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
   data.table::fwrite(results, file = out_path, sep = "\t", quote = FALSE)
+
+  # --- 7. Write Sidecar Metadata ---
+  # Extract the unique IDs present in the final result set
+  # If results are empty, these will be character(0), resulting in empty metadata files
+  ids_x_final <- if (nrow(results) > 0) unique(results$feature_x) else character(0)
+  ids_y_final <- if (nrow(results) > 0) unique(results$feature_y) else character(0)
+
+  # Write Metadata X
+  write_metadata_sidecar(
+    obj = obj_x,
+    keep_ids = ids_x_final,
+    out_path = out_path,
+    suffix = "x"
+  )
+
+  # Write Metadata Y
+  write_metadata_sidecar(
+    obj = obj_y,
+    keep_ids = ids_y_final,
+    out_path = out_path,
+    suffix = "y"
+  )
+
   message("Pipeline completed successfully.")
 }
 

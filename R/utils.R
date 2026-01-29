@@ -31,8 +31,6 @@ filter_by_prevalence <- function(obj, thresh) {
   if (thresh <= 0) return(obj)
 
   # Determine cutoff: Absolute vs Percentage
-  # If 0 < thresh < 1: Treat as percentage of total samples.
-  # If thresh >= 1: Treat as absolute count.
   if (thresh < 1) {
     cutoff <- ceiling(thresh * ncol(obj$mat))
   } else {
@@ -48,4 +46,51 @@ filter_by_prevalence <- function(obj, thresh) {
 
   # Uses the S3 subsetting method '[.coreact_data' defined in class_coreact.R
   return(obj[keep, ])
+}
+
+#' Write Sidecar Metadata (Internal)
+#'
+#' Writes a metadata TSV for features present in the final results.
+#' Appends `_metadata_{suffix}` to the base filename.
+#'
+#' @param obj A `coreact_data` object (containing `$meta` and `$mat`).
+#' @param keep_ids Character vector. Feature IDs appearing in the final interaction list.
+#' @param out_path String. The path of the main results file.
+#' @param suffix String. Suffix to distinguish X and Y (e.g., "x" or "y").
+#' @return NULL (Writes file to disk).
+#' @keywords internal
+write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
+  # Construct filename: results.tsv -> results_metadata_x.tsv
+  # This regex inserts the suffix before the last extension
+  if (grepl("\\.", basename(out_path))) {
+    # If extension exists, insert suffix before it
+    meta_file <- sub("(\\.[^.]+)$", sprintf("_metadata_%s\\1", suffix), out_path)
+  } else {
+    # If no extension, append suffix + .tsv default
+    meta_file <- sprintf("%s_metadata_%s.tsv", out_path, suffix)
+  }
+
+  # Extract IDs from the object (assuming rownames of matrix are the master IDs)
+  all_ids <- rownames(obj$mat)
+
+  # Check which features are in the final results
+  to_keep <- all_ids %in% keep_ids
+
+  # Create the export table: Feature ID first
+  export_df <- tibble::tibble(feature_id = all_ids[to_keep])
+
+  # Bind metadata columns if they exist
+  if (!is.null(obj$meta) && ncol(obj$meta) > 0) {
+    # Note: obj$meta is expected to be row-aligned with obj$mat
+    meta_subset <- obj$meta[to_keep, , drop = FALSE]
+    export_df <- dplyr::bind_cols(export_df, meta_subset)
+  }
+
+  message(sprintf("Writing %s metadata (%d features) to %s ...", suffix, nrow(export_df), meta_file))
+
+  # Ensure directory exists (redundant check but safe)
+  out_dir <- dirname(meta_file)
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+
+  data.table::fwrite(export_df, file = meta_file, sep = "\t", quote = FALSE)
 }
