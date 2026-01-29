@@ -200,7 +200,17 @@ run_coreact <- function(data_x,
 
   # --- 4. Assembly ---
   res <- res[!sapply(res, is.null)]
-  if (length(res) == 0) return(tibble::tibble())
+
+  # Prepare Empty Schema if no results
+  if (length(res) == 0) {
+    empty_df <- tibble::tibble(
+      feature_x = character(), feature_y = character(),
+      idx_x = integer(), idx_y = integer(),
+      intersection = numeric(), size_x = numeric(), size_y = numeric(),
+      union = numeric(), jaccard = numeric(), overlap = numeric(), p_val = numeric()
+    )
+    return(empty_df)
+  }
 
   final_df <- data.table::rbindlist(res) %>% tibble::as_tibble()
 
