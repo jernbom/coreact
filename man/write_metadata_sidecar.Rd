@@ -20,6 +20,6 @@ NULL (Writes file to disk).
 }
 \description{
 Writes a metadata TSV for features present in the final results.
-Appends `_metadata_{suffix}` to the base filename.
+Appends `_metadata_\{suffix\}` to the base filename.
 }
 \keyword{internal}

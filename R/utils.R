@@ -51,7 +51,7 @@ filter_by_prevalence <- function(obj, thresh) {
 #' Write Sidecar Metadata (Internal)
 #'
 #' Writes a metadata TSV for features present in the final results.
-#' Appends `_metadata_{suffix}` to the base filename.
+#' Appends `_metadata_\{suffix\}` to the base filename.
 #'
 #' @param obj A `coreact_data` object (containing `$meta` and `$mat`).
 #' @param keep_ids Character vector. Feature IDs appearing in the final interaction list.
