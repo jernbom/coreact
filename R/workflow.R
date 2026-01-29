@@ -12,7 +12,7 @@
 #'   If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.
 #' @param feature_id_sep String. Separator for Feature IDs.
 #' @param min_prevalence Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
-#'   to retain a feature.
+#'   to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.
 #' @param filter_config List of structural filters (e.g., `min_intersection`).
 #' @param fdr_threshold Numeric. Max FDR to retain (default 0.05). If `NULL`, no filtering.
 #' @param n_cores Integer. Number of cores.
@@ -83,9 +83,20 @@ coreact_pipeline <- function(paths,
   # Helper to filter an object on prevalence
   prev_filter <- function(obj, thresh) {
     if (thresh <= 0) return(obj)
+
+    # Determine cutoff: Absolute vs Percentage
+    # If 0 < thresh < 1: Treat as percentage of total samples.
+    # If thresh >= 1: Treat as absolute count.
+    if (thresh < 1) {
+      cutoff <- ceiling(thresh * ncol(obj$mat))
+    } else {
+      cutoff <- thresh
+    }
+
     prev <- Matrix::rowSums(obj$mat > 0)
-    keep <- prev >= thresh
-    if (sum(keep) == 0) stop(sprintf("Filter removed all features from %s.", obj$name))
+    keep <- prev >= cutoff
+
+    if (sum(keep) == 0) stop(sprintf("Filter removed all features from %s (Cutoff: %s).", obj$name, cutoff))
     obj[keep, ] # Uses the S3 subsetting method
   }
 
