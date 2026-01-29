@@ -93,14 +93,14 @@ worker_chunk_calc <- function(idx_x_chunk,
 
   # --- 6. Return ---
   tibble::tibble(
-    idx_x = idx_x_chunk[idx_pairs[, 1]], # Absolute index in X
-    idx_y = idx_pairs[, 2],              # Absolute index in Y
-    intersection = v_int,
-    size_x = v_sz_x,
-    size_y = v_sz_y,
-    union = v_union,
-    jaccard = v_jacc,
-    overlap = v_over,
-    p_val = v_pval
+    idx_x = as.vector(idx_x_chunk[idx_pairs[, 1]]), # Absolute index in X
+    idx_y = as.vector(idx_pairs[, 2]),              # Absolute index in Y (strip 'col' name)
+    intersection = as.vector(v_int),
+    size_x = as.vector(v_sz_x),
+    size_y = as.vector(v_sz_y),
+    union = as.vector(v_union),
+    jaccard = as.vector(v_jacc),
+    overlap = as.vector(v_over),
+    p_val = as.vector(v_pval)
   )
 }
