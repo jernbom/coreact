@@ -1,36 +1,122 @@
-test_that("import_coreact_tsv reads and parses correctly", {
-  # 1. Create a dummy TSV
-  tf <- tempfile(fileext = ".tsv")
-  df <- data.frame(
-    gene_id = c("g1", "g2"),
-    protein_name = c("p1", "p2"),
-    S1 = c(1, 0),
-    S2 = c(0, 1),
-    S3 = c(1, 1)
+library(testthat)
+library(Matrix)
+
+# --- Helper to create temp TSV files ---
+write_temp_tsv <- function(df) {
+  tmp <- tempfile(fileext = ".tsv")
+  write.table(df, file = tmp, sep = "\t", row.names = FALSE, quote = FALSE)
+  return(tmp)
+}
+
+# --- Helper Data Frame ---
+# 3 Genes, 2 Metadata cols (ID, Symbol), 2 Samples (S1, S2)
+create_df <- function() {
+  data.frame(
+    GeneID = c("G1", "G2", "G3"),
+    Symbol = c("Alpha", "Beta", "Gamma"),
+    S1 = c(10, 0, 5),
+    S2 = c(0, 2, 5),
+    stringsAsFactors = FALSE
   )
-  write.table(df, tf, sep="\t", quote=FALSE, row.names=FALSE)
+}
 
-  # 2. Test Import with Name
-  obj <- import_coreact_tsv(tf, meta_cols = c("gene_id", "protein_name"), name = "TestImport")
+test_that("import_coreact_tsv imports valid data correctly", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
 
-  # 3. Validation
+  # 1. Standard Import (Meta cols 1 & 2, ID is col 1)
+  obj <- import_coreact_tsv(
+    path,
+    meta_cols = c("GeneID", "Symbol"),
+    feature_id = "GeneID",
+    name = "TestImport"
+  )
+
   expect_s3_class(obj, "coreact_data")
-  expect_equal(obj$n_features, 2)
-  expect_equal(obj$n_samples, 3) # S1, S2, S3
-  expect_equal(colnames(obj$meta), c("gene_id", "protein_name"))
+  expect_equal(obj$name, "TestImport")
 
-  # Cleanup
-  unlink(tf)
+  # Check Dimensions: 3 Features x 2 Samples
+  expect_equal(dim(obj$mat), c(3, 2))
+  expect_equal(dim(obj$meta), c(3, 2))
+
+  # Check Content
+  expect_equal(rownames(obj$mat), c("G1", "G2", "G3"))
+  expect_equal(colnames(obj$mat), c("S1", "S2"))
+  expect_equal(obj$meta$Symbol, c("Alpha", "Beta", "Gamma"))
+
+  # Check Matrix Type (Sparse)
+  expect_true(methods::is(obj$mat, "sparseMatrix"))
 })
 
-test_that("import_coreact_tsv handles index-based meta columns", {
-  tf <- tempfile(fileext = ".tsv")
-  df <- data.frame(ID=1:5, Val=c(1,1,0,0,0), note=5:1)
-  write.table(df, tf, sep="\t", row.names=FALSE)
+test_that("import_coreact_tsv handles different column specifications", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
 
-  obj <- import_coreact_tsv(tf, meta_cols = c(1,3))
-  expect_equal(obj$n_samples, 1) # Only 'Val' is sample
-  expect_equal(colnames(obj$meta), c("ID", "note"))
+  # 1. Numeric Indices for Meta
+  obj_idx <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = 1)
+  expect_equal(colnames(obj_idx$meta), c("GeneID", "Symbol"))
+  expect_equal(rownames(obj_idx$mat), c("G1", "G2", "G3"))
 
-  unlink(tf)
+  # 2. Composite Feature ID (Concatenation)
+  obj_comp <- import_coreact_tsv(
+    path,
+    meta_cols = 1:2,
+    feature_id = c("GeneID", "Symbol"),
+    feature_id_sep = "_"
+  )
+
+  expected_ids <- c("G1_Alpha", "G2_Beta", "G3_Gamma")
+  expect_equal(rownames(obj_comp$mat), expected_ids)
+  expect_equal(rownames(obj_comp$meta), expected_ids)
+})
+
+test_that("import_coreact_tsv handles implicit IDs", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
+
+  # If feature_id is NULL, it should use row numbers
+  # Note: rownames in R are always character
+  obj <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = NULL)
+
+  expect_equal(rownames(obj$mat), c("1", "2", "3"))
+  expect_equal(rownames(obj$meta), c("1", "2", "3"))
+})
+
+test_that("import_coreact_tsv validates inputs", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
+
+  # 1. File Not Found
+  expect_error(import_coreact_tsv("nonexistent_file.tsv"), "File not found")
+
+  # 2. Missing Metadata Columns
+  expect_error(import_coreact_tsv(path, meta_cols = "WrongCol"), "Metadata columns not found")
+
+  # 3. Missing Feature ID Columns
+  expect_error(
+    import_coreact_tsv(path, meta_cols = 1:2, feature_id = "WrongID"),
+    "Feature ID columns not found"
+  )
+
+  # 4. Feature ID not inside Meta Cols
+  # Here "S1" is a data column, not a metadata column
+  expect_error(
+    import_coreact_tsv(path, meta_cols = "GeneID", feature_id = "S1"),
+    "must be present in 'meta_cols'"
+  )
+
+  # 5. Out of bounds indices
+  expect_error(import_coreact_tsv(path, meta_cols = 99), "indices out of bounds")
+})
+
+test_that("import_coreact_tsv validates uniqueness", {
+  # Create data with duplicate IDs
+  df_dup <- create_df()
+  df_dup <- rbind(df_dup, df_dup[1, ]) # Duplicate first row
+  path <- write_temp_tsv(df_dup)
+
+  expect_error(
+    import_coreact_tsv(path, meta_cols = 1:2, feature_id = "GeneID"),
+    "Constructed Feature IDs are not unique"
+  )
 })
