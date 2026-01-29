@@ -21,13 +21,13 @@ worker_chunk_calc(
 
 \item{mat_y}{The full matrix Y (dense or sparse).}
 
-\item{prev_x_chunk}{Vector of prevalence for rows in X chunk.}
+\item{prev_x_chunk}{Vector of prevalence (rowSums) for rows in X chunk.}
 
-\item{prev_y}{Vector of prevalence for all rows in Y.}
+\item{prev_y}{Vector of prevalence (rowSums) for all rows in Y.}
 
-\item{n_samples}{Integer, total number of samples.}
+\item{n_samples}{Integer, total number of samples (ncol).}
 
-\item{config}{List of filter thresholds.}
+\item{config}{List of name-value pairs of filter thresholds. Current valid options are: `min_intersection`, `min_jaccard`, `min_overlap`.}
 }
 \value{
 A tibble of passing pairs with stats.

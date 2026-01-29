@@ -2,21 +2,23 @@
 % Please edit documentation in R/class_coreact.R
 \name{new_coreact_data}
 \alias{new_coreact_data}
-\title{Constructor for coreact data}
+\title{Coreact Data Constructor}
 \usage{
 new_coreact_data(mat, meta, name = "unknown")
 }
 \arguments{
-\item{mat}{A matrix (binary/integer). Rows are features, columns are samples.}
+\item{mat}{A sparse matrix (dgCMatrix) containing counts/values.
+Rows are features, columns are samples.}
 
-\item{meta}{A data.frame containing feature annotations. Rows must match mat.}
+\item{meta}{A data.frame containing feature metadata (e.g., Gene Symbols).
+Number of rows must match `mat`.}
 
-\item{name}{A string identifier for this dataset (e.g., "viral", "human").}
+\item{name}{String. An identifier for the dataset.}
 }
 \value{
-An object of class 'coreact_data'
+An S3 object of class `coreact_data`.
 }
 \description{
-Creates a structured object for antibody co-occurrence analysis.
-Pre-calculates prevalence (row sums) to save compute time later.
+Internal constructor to create a `coreact_data` object.
+Strict validation: Row names must be present, unique, and identical in both inputs.
 }

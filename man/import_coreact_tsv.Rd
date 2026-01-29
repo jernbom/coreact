@@ -4,17 +4,37 @@
 \alias{import_coreact_tsv}
 \title{Import TSV as Coreact Data Object}
 \usage{
-import_coreact_tsv(path, meta_cols = 1, name = "unknown", n_cores = 1)
+import_coreact_tsv(
+  path,
+  meta_cols = 1,
+  feature_id = NULL,
+  feature_id_sep = "|",
+  name = "unknown",
+  n_cores = 1
+)
 }
 \arguments{
 \item{path}{String. Path to the .tsv file.}
 
-\item{meta_cols}{Vector (names or indices) of metadata columns.}
+\item{meta_cols}{Vector (integer or character). Indices or names of columns
+containing metadata.}
+
+\item{feature_id}{Vector (integer or character). The columns to use to construct
+unique row names (Feature IDs). Must be a subset of `meta_cols`.
+If multiple columns are provided, they are concatenated using `feature_id_sep`.
+If NULL, row numbers are used.}
+
+\item{feature_id_sep}{String. Separator used when concatenating multiple
+feature_id columns. Default is "|".}
 
 \item{name}{String. Identifier for the dataset.}
 
 \item{n_cores}{Integer. Number of threads for fast reading.}
 }
+\value{
+A 'coreact_data' object.
+}
 \description{
-Import TSV as Coreact Data Object
+Reads a TSV, separates metadata columns from sample data, and converts
+the sample data to a sparse matrix.
 }

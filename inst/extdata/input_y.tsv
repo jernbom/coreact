@@ -1,0 +1,6 @@
+protein_id	gene_name	Sample_1	Sample_2	Sample_3	Sample_4	Sample_5	Sample_6	Sample_7	Sample_8	Sample_9	Sample_10
+PROT_1	GENE_A	1	0	1	1	1	1	0	0	0	0
+PROT_2	GENE_B	0	1	1	0	0	0	0	0	1	0
+PROT_3	GENE_C	0	0	0	1	1	0	0	0	1	1
+PROT_4	GENE_D	0	1	0	0	0	0	0	0	0	1
+PROT_5	GENE_E	1	1	1	1	0	0	1	0	0	0
