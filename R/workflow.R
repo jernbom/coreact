@@ -1,30 +1,28 @@
 #' Run Full Coreact Pipeline (Disc-to-Disc)
 #'
-#' @param path_x Path to input TSV X.
-#' @param path_y Path to input TSV Y.
+#' @param paths Character vector (length 2). Paths to input TSV files (X and Y).
 #' @param out_path Path for result file.
-#' @param name_x Name for dataset X (default "Input_X").
-#' @param name_y Name for dataset Y (default "Input_Y").
-#' @param meta_cols_x Vector. Metadata columns for X.
-#' @param meta_cols_y Vector. Metadata columns for Y.
-#' @param feature_id_x Vector. Columns for Feature IDs in X.
-#' @param feature_id_y Vector. Columns for Feature IDs in Y.
+#' @param names Character vector (length 2). Names for datasets X and Y.
+#'   Default `c("Input_X", "Input_Y")`.
+#' @param meta_cols List or Vector. Names or indices of metadata columns.
+#'   If a vector, applied to both X and Y.
+#'   If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.
+#' @param feature_ids List or Vector. Names or indices of columns for constructing unique Feature IDs. If `NULL`, row numbers are used.
+#'   If a vector, applied to both X and Y.
+#'   If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.
 #' @param feature_id_sep String. Separator for Feature IDs.
-#' @param min_prevalence Numeric vector (length 1 or 2).
-#' @param filter_config List of structural filters.
-#' @param fdr_threshold Numeric. Max FDR to retain (default 0.05).
+#' @param min_prevalence Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
+#'   to retain a feature.
+#' @param filter_config List of structural filters (e.g., `min_intersection`).
+#' @param fdr_threshold Numeric. Max FDR to retain (default 0.05). If `NULL`, no filtering.
 #' @param n_cores Integer. Number of cores.
-#' @param chunk_size Integer or NULL. Auto-calculated if NULL.
+#' @param chunk_size Integer or `NULL`. Auto-calculated if `NULL`.
 #' @export
-coreact_pipeline <- function(path_x,
-                             path_y,
+coreact_pipeline <- function(paths,
                              out_path,
-                             name_x = "Input_X",
-                             name_y = "Input_Y",
-                             meta_cols_x = 1,
-                             meta_cols_y = 1,
-                             feature_id_x = NULL,
-                             feature_id_y = NULL,
+                             names = c("Input_X", "Input_Y"),
+                             meta_cols = 1,
+                             feature_ids = NULL,
                              feature_id_sep = "|",
                              min_prevalence = 0,
                              filter_config = list(min_intersection = 1),
@@ -32,51 +30,93 @@ coreact_pipeline <- function(path_x,
                              n_cores = 1,
                              chunk_size = NULL) {
 
-  # Handle Argument Recycling
+  # --- 1. Argument Validation & Expansion ---
+  if (length(paths) != 2 && !is.character(paths)) stop("Argument 'paths' must be a character vector of length 2.")
+  if (length(names) != 2 && !is.character(names)) stop("Argument 'names' must be a character vector of length 2.")
+
+  # Helper: Resolve arguments that can be shared or specific (list vs vector)
+  resolve_xy <- function(val, arg_name) {
+    if (is.list(val)) {
+      if (length(val) == 1) return(list(x = val[[1]], y = val[[1]]))
+      if (length(val) == 2) return(list(x = val[[1]], y = val[[2]]))
+      stop(sprintf("Argument '%s' provided as a list must be length 1 or 2.", arg_name))
+    } else {
+      # Atomic vector (or NULL): Recycle for both
+      return(list(x = val, y = val))
+    }
+  }
+
+  m_cols <- resolve_xy(meta_cols, "meta_cols")
+  f_ids  <- resolve_xy(feature_ids, "feature_ids")
+
+  # Prevalence recycling
+  if (length(min_prevalence) > 2) stop("min_prevalence must have length 1 or 2.")
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
-  thresh_x <- min_prevalence[1]
-  thresh_y <- min_prevalence[2]
 
-  # --- Load Data ---
-  obj_x <- import_coreact_tsv(path_x, meta_cols = meta_cols_x, feature_id = feature_id_x,
-                              feature_id_sep = feature_id_sep, name = name_x, n_cores = n_cores)
+  # --- 2. Load Data ---
+  # Load X
+  obj_x <- import_coreact_tsv(
+    paths[1],
+    meta_cols = m_cols$x,
+    feature_id = f_ids$x,
+    feature_id_sep = feature_id_sep,
+    name = names[1],
+    n_cores = n_cores
+  )
 
-  obj_y <- import_coreact_tsv(path_y, meta_cols = meta_cols_y, feature_id = feature_id_y,
-                              feature_id_sep = feature_id_sep, name = name_y, n_cores = n_cores)
+  # Load Y
+  obj_y <- import_coreact_tsv(
+    paths[2],
+    meta_cols = m_cols$y,
+    feature_id = f_ids$y,
+    feature_id_sep = feature_id_sep,
+    name = names[2],
+    n_cores = n_cores
+  )
 
-  # --- Check sample identity ---
-
-  if (!all(colnames(obj_x$mat) == colnames(obj_y$mat))) stop("Sample identifiers in matrices X and Y are not identical.")
-
-  # --- Pre-Filtering ---
-  if (thresh_x > 0) {
-    prev_x <- Matrix::rowSums(obj_x$mat > 0)
-    keep_x <- prev_x >= thresh_x
-    if (sum(keep_x) == 0) stop(sprintf("Filter removed all features from %s.", name_x))
-    obj_x <- obj_x[keep_x, ]
+  # --- 3. Consistency Checks ---
+  if (!identical(colnames(obj_x$mat), colnames(obj_y$mat))) {
+    stop("Error: Sample identifiers (columns) in matrices X and Y are not identical.")
   }
 
-  if (thresh_y > 0) {
-    prev_y <- Matrix::rowSums(obj_y$mat > 0)
-    keep_y <- prev_y >= thresh_y
-    if (sum(keep_y) == 0) stop(sprintf("Filter removed all features from %s.", name_y))
-    obj_y <- obj_y[keep_y, ]
+  # --- 4. Pre-Filtering ---
+  # Helper to filter an object on prevalence
+  prev_filter <- function(obj, thresh) {
+    if (thresh <= 0) return(obj)
+    prev <- Matrix::rowSums(obj$mat > 0)
+    keep <- prev >= thresh
+    if (sum(keep) == 0) stop(sprintf("Filter removed all features from %s.", obj$name))
+    obj[keep, ] # Uses the S3 subsetting method
   }
+
+  obj_x <- prev_filter(obj_x, min_prevalence[1])
+  obj_y <- prev_filter(obj_y, min_prevalence[2])
 
   gc()
 
-  # --- Compute ---
+  # --- 5. Compute (Engine) ---
   results <- run_coreact(
     data_x = obj_x,
     data_y = obj_y,
     n_cores = n_cores,
     chunk_size = chunk_size,
-    filter_config = filter_config,
-    fdr_threshold = fdr_threshold
+    filter_config = filter_config
   )
 
-  # --- Write ---
-  if (nrow(results) == 0) warning("No results found. Writing empty file.")
+  # --- 6. Post-Processing (FDR & Write) ---
+  if (nrow(results) > 0) {
+    # Calculate FDR
+    results$p_adj <- stats::p.adjust(results$p_val, method = "fdr")
+
+    # Filter by FDR
+    if (!is.null(fdr_threshold)) {
+      message(sprintf("Filtering results by FDR <= %s ...", fdr_threshold))
+      results <- results[results$p_adj <= fdr_threshold, ]
+    }
+  }
+
+  # Write
+  if (nrow(results) == 0) warning("No significant results found. Writing empty file.")
 
   message(sprintf("Writing results to %s ...", out_path))
 
@@ -88,53 +128,41 @@ coreact_pipeline <- function(path_x,
 }
 
 #' Run Coreact Engine (Internal)
+#'
+#' @param data_x,data_y coreact_data objects.
+#' @param n_cores Integer.
+#' @param chunk_size Integer.
+#' @param filter_config List of thresholds.
+#'
+#' @return A tibble of results.
 #' @export
 run_coreact <- function(data_x,
                         data_y,
                         n_cores = 1,
                         chunk_size = NULL,
-                        filter_config = list(min_intersection = 1),
-                        fdr_threshold = NULL) {
+                        filter_config = list(min_intersection = 1)) {
 
-  # 0. Extract Stats & Names
-  # We extract these BEFORE swapping to ensure we track the names correctly.
-  n_features_x <- nrow(data_x$mat)
-  n_features_y <- nrow(data_y$mat)
+  # --- 1. Swap Optimization ---
+  # Strategy: Chunk the LARGER dataset.
+  # If X is small (10 rows) and Y is huge (1M rows), 1 chunk of X results in
+  # a calculation of (10 x N) * (N x 1M) -> 10 x 1M dense matrix (Huge memory).
+  # If we swap, we chunk the 1M rows. Each chunk is small, memory is managed.
 
-  # Calculate prevalence
-  prev_x <- Matrix::rowSums(data_x$mat > 0)
-  prev_y <- Matrix::rowSums(data_y$mat > 0)
-
-  # Get Row Names (Feature IDs)
-  ids_current_x <- rownames(data_x$mat)
-  ids_current_y <- rownames(data_y$mat)
-
-  # Get N samples
-  if (!all(colnames(data_x$mat) == colnames(data_y$mat))) {
-    stop("Sample identifiers in matrices X and Y are not identical.")
-  } else {
-    n_samples <- ncol(data_x$mat) # Assumes X and Y have same samples
-  }
-
-  # 1. Swap Optimization
   swapped <- FALSE
-  if (n_features_x < n_features_y) {
+  if (nrow(data_x$mat) < nrow(data_y$mat)) {
     message("Optimizing: Swapping X and Y for load balancing...")
-
-    # Swap Data
-    tmp_data <- data_x; data_x <- data_y; data_y <- tmp_data
-
-    # Swap Stats
-    tmp_prev <- prev_x; prev_x <- prev_y; prev_y <- tmp_prev
-    n_features_x <- nrow(data_x$mat) # Update count
-
-    # Swap Name References
-    tmp_ids <- ids_current_x; ids_current_x <- ids_current_y; ids_current_y <- tmp_ids
-
+    tmp <- data_x; data_x <- data_y; data_y <- tmp
     swapped <- TRUE
   }
 
-  # 2. Auto-Chunking
+  n_features_x <- nrow(data_x$mat)
+
+  # Calculate Stats
+  prev_x <- Matrix::rowSums(data_x$mat > 0)
+  prev_y <- Matrix::rowSums(data_y$mat > 0)
+  n_samples <- ncol(data_x$mat)
+
+  # --- 2. Auto-Chunking ---
   if (is.null(chunk_size)) {
     target_chunks <- max(n_cores * 20, 10)
     calc_size <- ceiling(n_features_x / target_chunks)
@@ -144,11 +172,12 @@ run_coreact <- function(data_x,
                     chunk_size, ceiling(n_features_x/chunk_size)))
   }
 
-  # 3. Execution
+  # --- 3. Execution ---
   chunks <- split(1:n_features_x, ceiling(seq_along(1:n_features_x) / chunk_size))
 
   run_fun <- function(idx) {
-    # Note: We pass the SUBSET of prevalence for X, but ALL of prevalence for Y
+    # Note: data_x is the object being chunked.
+    # idx refers to rows in the CURRENT data_x.
     worker_chunk_calc(
       idx_x_chunk = idx,
       mat_x_chunk = data_x$mat[idx, , drop=FALSE],
@@ -173,42 +202,50 @@ run_coreact <- function(data_x,
     res <- lapply(chunks, run_fun)
   }
 
-  # 4. Bind & Process Results
+  # --- 4. Assembly ---
   res <- res[!sapply(res, is.null)]
   if (length(res) == 0) return(tibble::tibble())
 
   final_df <- data.table::rbindlist(res) %>% tibble::as_tibble()
 
-  # 5. Map Indices to IDs
-  # idx_x from worker refers to ids_current_x
-  # idx_y from worker refers to ids_current_y
-  final_df$feature_x <- ids_current_x[final_df$idx_x]
-  final_df$feature_y <- ids_current_y[final_df$idx_y]
+  # --- 5. Map Indices to IDs ---
+  # At this moment:
+  # 'idx_x' refers to rows of the CURRENT data_x
+  # 'idx_y' refers to rows of the CURRENT data_y
+  # The matrix rownames contain the Feature IDs.
 
-  # 6. Un-Swap if needed
+  final_df$feature_x <- rownames(data_x$mat)[final_df$idx_x]
+  final_df$feature_y <- rownames(data_y$mat)[final_df$idx_y]
+
+  # --- 6. Handle Un-Swapping ---
   if (swapped) {
-    # If we swapped, "feature_x" in the df actually holds the Y IDs, and vice versa.
-    # We rename columns to restore original meaning.
+    # If we swapped:
+    # data_x holds the Original Y data.
+    # data_y holds the Original X data.
+    # Therefore:
+    # column 'feature_x' actually contains IDs from Original Y.
+    # column 'feature_y' actually contains IDs from Original X.
+    # We must rename them to restore the user's expected order (X, Y).
+
     final_df <- dplyr::rename(final_df,
                               idx_x_tmp = idx_x, idx_y_tmp = idx_y,
                               size_x_tmp = size_x, size_y_tmp = size_y,
-                              feat_x_tmp = feature_x, feat_y_tmp = feature_y) %>%
+                              feat_x_tmp = feature_x, feat_y_tmp = feature_y
+    ) %>%
       dplyr::rename(
-        idx_x = idx_y_tmp, idx_y = idx_x_tmp,
-        size_x = size_y_tmp, size_y = size_x_tmp,
-        feature_x = feat_y_tmp, feature_y = feat_x_tmp
+        # Map Y (temp X) back to Y
+        idx_y = idx_x_tmp,
+        size_y = size_x_tmp,
+        feature_y = feat_x_tmp,
+
+        # Map X (temp Y) back to X
+        idx_x = idx_y_tmp,
+        size_x = size_y_tmp,
+        feature_x = feat_y_tmp
       )
   }
 
-  # 7. FDR & Cleanup
-  final_df$p_adj <- stats::p.adjust(final_df$p_val, method = "fdr")
-
-  if (!is.null(fdr_threshold)) {
-    message(sprintf("Filtering results by FDR < %s", fdr_threshold))
-    final_df <- final_df[final_df$p_adj < fdr_threshold, ]
-  }
-
-  # Reorder columns for readability (IDs first)
+  # Reorder columns for readability
   final_df <- final_df %>%
     dplyr::select(feature_x, feature_y, idx_x, idx_y, everything())
 
