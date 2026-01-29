@@ -5,13 +5,12 @@
 \title{Run Full Coreact Pipeline (Disc-to-Disc)}
 \usage{
 coreact_pipeline(
-  path_x,
-  path_y,
+  paths,
   out_path,
-  name_x = "Input_X",
-  name_y = "Input_Y",
-  meta_cols_x = 1,
-  meta_cols_y = 1,
+  names = c("Input_X", "Input_Y"),
+  meta_cols = 1,
+  feature_ids = NULL,
+  feature_id_sep = "|",
   min_prevalence = 0,
   filter_config = list(min_intersection = 1),
   fdr_threshold = 0.05,
@@ -20,29 +19,33 @@ coreact_pipeline(
 )
 }
 \arguments{
-\item{path_x}{Path to input TSV X.}
-
-\item{path_y}{Path to input TSV Y.}
+\item{paths}{Character vector (length 2). Paths to input TSV files (X and Y).}
 
 \item{out_path}{Path for result file.}
 
-\item{name_x}{Name for dataset X (default "Input_X").}
+\item{names}{Character vector (length 2). Names for datasets X and Y.
+Default `c("Input_X", "Input_Y")`.}
 
-\item{name_y}{Name for dataset Y (default "Input_Y").}
+\item{meta_cols}{List or Vector. Names or indices of metadata columns.
+If a vector, applied to both X and Y.
+If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.}
 
-\item{meta_cols_x}{Vector. Metadata columns for X.}
+\item{feature_ids}{List or Vector. Names or indices of columns for constructing unique Feature IDs. If `NULL`, row numbers are used.
+If a vector, applied to both X and Y.
+If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.}
 
-\item{meta_cols_y}{Vector. Metadata columns for Y.}
+\item{feature_id_sep}{String. Separator for Feature IDs.}
 
-\item{min_prevalence}{Numeric vector (length 1 or 2).}
+\item{min_prevalence}{Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
+to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.}
 
-\item{filter_config}{List of structural filters.}
+\item{filter_config}{List of structural filters (e.g., `min_intersection`).}
 
-\item{fdr_threshold}{Numeric. Max FDR to retain (default 0.05).}
+\item{fdr_threshold}{Numeric. Max FDR to retain (default 0.05). If `NULL`, no filtering.}
 
 \item{n_cores}{Integer. Number of cores.}
 
-\item{chunk_size}{Integer or NULL. Auto-calculated if NULL.}
+\item{chunk_size}{Integer or `NULL`. Auto-calculated if `NULL`.}
 }
 \description{
 Run Full Coreact Pipeline (Disc-to-Disc)

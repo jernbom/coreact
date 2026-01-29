@@ -9,9 +9,20 @@ run_coreact(
   data_y,
   n_cores = 1,
   chunk_size = NULL,
-  filter_config = list(min_intersection = 1),
-  fdr_threshold = NULL
+  filter_config = list(min_intersection = 1)
 )
+}
+\arguments{
+\item{data_x, data_y}{coreact_data objects.}
+
+\item{n_cores}{Integer.}
+
+\item{chunk_size}{Integer.}
+
+\item{filter_config}{List of thresholds.}
+}
+\value{
+A tibble of results.
 }
 \description{
 Run Coreact Engine (Internal)
