@@ -1,6 +1,7 @@
 #' Coreact Data Constructor
 #'
 #' Internal constructor to create a `coreact_data` object.
+#' Strict validation: Row names must be present, unique, and identical in both inputs.
 #'
 #' @param mat A sparse matrix (dgCMatrix) containing counts/values.
 #'   Rows are features, columns are samples.
@@ -27,24 +28,20 @@ new_coreact_data <- function(mat, meta, name = "unknown") {
                  nrow(mat), nrow(meta)))
   }
 
-  # 3. Row Name Synchronization
-  # If matrix has row names (Feature IDs), force metadata to match.
-  if (!is.null(rownames(mat))) {
-    rownames(meta) <- rownames(mat)
-  } else if (!is.null(rownames(meta))) {
-    # Conversely, if meta has names but matrix doesn't, sync to matrix
-    rownames(mat) <- rownames(meta)
+  # 3. Row Name Validation (Strict)
+  mat_names <- rownames(mat)
+  meta_names <- rownames(meta)
+
+  if (is.null(mat_names)) {
+    stop("Input 'mat' must have row names (Feature IDs).")
   }
 
-  if (is.null(rownames(mat)) || is.null(rownames(meta))) {
-    stop("Row names must be present.")
+  # Check Identity
+  if (!identical(mat_names, meta_names)) {
+    stop("Row names (Feature IDs) in Matrix and Metadata must be identical and in the same order.")
   }
-  if (!all(rownames(mat) == rownmaes(meta))) {
-    stop("Row names must be identical.")
-  }
-  if (any(duplicated(rownames(mat))) || any(duplicated(rownames(meta)))) {
-    stop("Row names must be unique.")
-  }
+
+  if (any(duplicated(rownames(mat))) || any(duplicated(rownames(meta)))) stop("Row names must be unique.")
 
   # 4. Create Object
   structure(
@@ -68,11 +65,9 @@ print.coreact_data <- function(x, ...) {
   cat(sprintf("=== Coreact Data Object: [%s] ===\n", x$name))
   cat(sprintf("Dimensions: %d Features x %d Samples\n", nrow(x$mat), ncol(x$mat)))
 
-  # Show Memory Usage (optional but helpful)
   mem_size <- format(object.size(x), units = "auto")
   cat(sprintf("Size: %s\n", mem_size))
 
-  # Preview IDs
   if (!is.null(rownames(x$mat))) {
     n_show <- min(3, nrow(x$mat))
     ids <- rownames(x$mat)[1:n_show]
@@ -84,39 +79,29 @@ print.coreact_data <- function(x, ...) {
 
 #' Subset Coreact Data
 #'
-#' subsetting operator to ensure metadata stays in sync with the matrix.
+#' Subsetting operator.
 #'
 #' @param x A `coreact_data` object.
-#' @param i Row indices (features). Integers, characters (IDs), or logicals.
-#' @param j Column indices (samples). Integers, characters, or logicals.
+#' @param i Row indices (features).
+#' @param j Column indices (samples).
 #' @param ... Additional arguments (ignored).
 #'
 #' @export
 `[.coreact_data` <- function(x, i, j, ...) {
-
-  # Handle missing arguments (default to all)
   if (missing(i)) i <- seq_len(nrow(x$mat))
   if (missing(j)) j <- seq_len(ncol(x$mat))
 
-  # Subset Matrix
-  # drop=FALSE ensures we keep it as a matrix even if 1x1
   new_mat <- x$mat[i, j, drop = FALSE]
-
-  # Subset Metadata (Rows/Features only)
-  # Metadata does not have columns corresponding to samples, so we only use `i`
   new_meta <- x$meta[i, , drop = FALSE]
-
-  # Create new object
-  # Update name to indicate it's a subset
   new_name <- paste0(x$name, "_subset")
 
+  # Constructor will validate that the subsetted names still match
   new_coreact_data(new_mat, new_meta, name = new_name)
 }
 
 #' Combine Coreact Data Objects (Column-bind)
 #'
-#' Combines multiple coreact_data objects by adding samples (columns).
-#' Checks that Feature IDs (rows) are identical before merging.
+#' Combines multiple coreact_data objects by adding samples.
 #'
 #' @param ... `coreact_data` objects to combine.
 #' @param deparse.level Integer. Ignored.
@@ -126,11 +111,9 @@ print.coreact_data <- function(x, ...) {
 cbind.coreact_data <- function(..., deparse.level = 1) {
   objects <- list(...)
 
-  # Validation: Need at least one object
   if (length(objects) == 0) return(NULL)
   if (length(objects) == 1) return(objects[[1]])
 
-  # 1. Validate Feature IDs (Row Consistency)
   ref_ids <- rownames(objects[[1]]$mat)
 
   for (idx in 2:length(objects)) {
@@ -145,17 +128,9 @@ cbind.coreact_data <- function(..., deparse.level = 1) {
     }
   }
 
-  # 2. Combine Matrices (Sparse binding)
-  # do.call is necessary to pass the list of matrices to cbind
   all_mats <- lapply(objects, function(x) x$mat)
   combined_mat <- do.call(cbind, all_mats)
-
-  # 3. Handle Metadata
-  # Since rows (features) are identical, we only need the metadata from the first object.
-  # (Assumption: Metadata doesn't change between sample batches)
   combined_meta <- objects[[1]]$meta
-
-  # 4. Create Name
   new_name <- paste(sapply(objects, function(x) x$name), collapse = "+")
 
   new_coreact_data(combined_mat, combined_meta, name = new_name)
