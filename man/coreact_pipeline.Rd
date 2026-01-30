@@ -9,6 +9,7 @@ coreact_pipeline(
   out_path,
   names = c("Input_X", "Input_Y"),
   meta_cols = 1,
+  sample_cols = NULL,
   feature_ids = NULL,
   feature_id_sep = "|",
   binarize = FALSE,
@@ -30,6 +31,11 @@ Default `c("Input_X", "Input_Y")`.}
 \item{meta_cols}{List or Vector. Names or indices of metadata columns.
 If a vector, applied to both X and Y.
 If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.}
+
+\item{sample_cols}{Optional List or Vector (default=`NULL`). Names or indices of sample columns.
+If a vector, applied to both X and Y.
+If a list of length 2, `sample_cols[[1]]` is used for X, `sample_cols[[2]]` for Y.
+If `NULL`, all columns not defined in `meta_cols` are used as sample columns.}
 
 \item{feature_ids}{List or Vector. Names or indices of columns for constructing unique Feature IDs. If `NULL`, row numbers are used.
 If a vector, applied to both X and Y.
