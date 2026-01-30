@@ -10,6 +10,7 @@ write_temp_tsv <- function(df) {
 
 # --- Helper Data Frame ---
 # 3 Genes, 2 Metadata cols (ID, Symbol), 2 Samples (S1, S2)
+# Contains counts (10, 5, 2) which are NOT valid unless binarized.
 create_df <- function() {
   data.frame(
     GeneID = c("G1", "G2", "G3"),
@@ -24,12 +25,13 @@ test_that("import_coreact_tsv imports valid data correctly", {
   df <- create_df()
   path <- write_temp_tsv(df)
 
-  # 1. Standard Import (Meta cols 1 & 2, ID is col 1)
+  # 1. Standard Import with Binarization
   obj <- import_coreact_tsv(
     path,
     meta_cols = c("GeneID", "Symbol"),
     feature_id = "GeneID",
-    name = "TestImport"
+    name = "TestImport",
+    binarize = TRUE # Required because data contains 10, 5, etc.
   )
 
   expect_s3_class(obj, "coreact_data")
@@ -44,6 +46,10 @@ test_that("import_coreact_tsv imports valid data correctly", {
   expect_equal(colnames(obj$mat), c("S1", "S2"))
   expect_equal(obj$meta$Symbol, c("Alpha", "Beta", "Gamma"))
 
+  # Check Values are now Binary
+  # Original S1 was 10, 0, 5 -> Should be 1, 0, 1
+  expect_equal(as.vector(obj$mat[, "S1"]), c(1, 0, 1))
+
   # Check Matrix Type (Sparse)
   expect_true(methods::is(obj$mat, "sparseMatrix"))
 })
@@ -53,7 +59,7 @@ test_that("import_coreact_tsv handles different column specifications", {
   path <- write_temp_tsv(df)
 
   # 1. Numeric Indices for Meta
-  obj_idx <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = 1)
+  obj_idx <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = 1, binarize = TRUE)
   expect_equal(colnames(obj_idx$meta), c("GeneID", "Symbol"))
   expect_equal(rownames(obj_idx$mat), c("G1", "G2", "G3"))
 
@@ -62,7 +68,8 @@ test_that("import_coreact_tsv handles different column specifications", {
     path,
     meta_cols = 1:2,
     feature_id = c("GeneID", "Symbol"),
-    feature_id_sep = "_"
+    feature_id_sep = "_",
+    binarize = TRUE
   )
 
   expected_ids <- c("G1_Alpha", "G2_Beta", "G3_Gamma")
@@ -75,11 +82,22 @@ test_that("import_coreact_tsv handles implicit IDs", {
   path <- write_temp_tsv(df)
 
   # If feature_id is NULL, it should use row numbers
-  # Note: rownames in R are always character
-  obj <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = NULL)
+  obj <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = NULL, binarize = TRUE)
 
   expect_equal(rownames(obj$mat), c("1", "2", "3"))
   expect_equal(rownames(obj$meta), c("1", "2", "3"))
+})
+
+test_that("import_coreact_tsv enforce binary requirement", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
+
+  # Fail Case: Importing counts without binarize = TRUE
+  # The strict constructor (new_coreact_data) should reject the matrix.
+  expect_error(
+    import_coreact_tsv(path, meta_cols = 1:2, feature_id = 1, binarize = FALSE),
+    "must be a binary matrix"
+  )
 })
 
 test_that("import_coreact_tsv validates inputs", {
@@ -99,7 +117,6 @@ test_that("import_coreact_tsv validates inputs", {
   )
 
   # 4. Feature ID not inside Meta Cols
-  # Here "S1" is a data column, not a metadata column
   expect_error(
     import_coreact_tsv(path, meta_cols = "GeneID", feature_id = "S1"),
     "must be present in 'meta_cols'"

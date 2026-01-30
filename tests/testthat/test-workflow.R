@@ -7,7 +7,10 @@ library(data.table)
 
 # Create dummy Coreact Object
 make_obj <- function(n_rows, n_cols, prefix = "G") {
-  mat <- Matrix::rsparsematrix(n_rows, n_cols, density = 0.5)
+  # rand.x = function(n) rep(1, n) forces all non-zero values to be exactly 1
+  mat <- Matrix::rsparsematrix(n_rows, n_cols, density = 0.5,
+                               rand.x = function(n) rep(1, n))
+
   row_ids <- paste0(prefix, seq_len(n_rows))
   col_ids <- paste0("S", seq_len(n_cols))
 
@@ -26,6 +29,7 @@ make_obj <- function(n_rows, n_cols, prefix = "G") {
 
 # Write temp TSV for pipeline test
 write_pipeline_tsv <- function(rows, cols, prefix) {
+  # sample(0:1) generates binary integers
   mat <- matrix(sample(0:1, rows * cols, replace = TRUE), nrow = rows)
   df <- as.data.frame(mat)
   colnames(df) <- paste0("S", 1:cols)
@@ -45,6 +49,7 @@ write_pipeline_tsv <- function(rows, cols, prefix) {
 # --- Tests for run_coreact (The Engine Wrapper) ---
 
 test_that("run_coreact computes results correctly", {
+  # Manually create binary sparse matrix
   m_x <- Matrix::Matrix(c(1,0, 0,1), 2, 2, sparse=TRUE)
   rownames(m_x) <- c("X1", "X2"); colnames(m_x) <- c("S1", "S2")
   o_x <- new_coreact_data(m_x, data.frame(id=c("X1","X2"), row.names=c("X1","X2")))
@@ -67,11 +72,13 @@ test_that("run_coreact handles swap optimization correctly", {
   colnames(o_x$mat) <- paste0("S", 1:5)
   colnames(o_y$mat) <- paste0("S", 1:5)
 
+  # Expect message about swapping because nrow(X) < nrow(Y)
   expect_message(
     res <- run_coreact(o_x, o_y, filter_config = list(min_intersection = 0)),
     "Swapping X and Y"
   )
 
+  # Check that results are mapped back correctly (Prefixes should match original input)
   expect_true(all(grepl("^X", res$feature_x)))
   expect_true(all(grepl("^Y", res$feature_y)))
   expect_gt(nrow(res), 0)
@@ -102,7 +109,7 @@ test_that("coreact_pipeline runs end-to-end", {
       meta_cols = c("FeatureID", "Desc"),
       feature_ids = "FeatureID",
       filter_config = list(min_intersection = 1),
-      fdr_threshold = 1.0
+      fdr_threshold = 1.0 # Keep everything for test
     ),
     "Pipeline completed successfully"
   )
@@ -118,16 +125,15 @@ test_that("coreact_pipeline runs end-to-end", {
 
 test_that("coreact_pipeline validates inputs", {
   p1 <- write_pipeline_tsv(5, 3, "A")
-  p2 <- write_pipeline_tsv(5, 4, "B")
+  p2 <- write_pipeline_tsv(5, 4, "B") # Different n columns
 
-  # FIX: We must specify BOTH metadata columns (1 and 2).
-  # If we only specify 1, column 2 ("Desc") is treated as data,
-  # creating a character matrix and crashing before the check we want to test.
+  # We must specify BOTH metadata columns (1 and 2).
+  # Otherwise column 2 ("Desc") is treated as data, creating a character matrix.
   expect_error(
     coreact_pipeline(
       paths = c(p1, p2),
       out_path = tempfile(),
-      meta_cols = 1:2, # Specify both metadata cols!
+      meta_cols = 1:2,
       feature_ids = 1
     ),
     "Sample identifiers.*not identical"
@@ -146,9 +152,6 @@ test_that("coreact_pipeline handles empty results gracefully", {
 
   out_empty <- file.path(tempdir(), "empty_results.tsv")
 
-  # FIX: Now that engine.R returns a valid (empty) tibble,
-  # fwrite writes headers, so fread sees a valid empty file.
-  # No warnings from data.table expected.
   expect_warning(
     coreact_pipeline(
       paths = c(p1, p1),

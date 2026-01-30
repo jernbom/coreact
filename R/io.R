@@ -14,6 +14,7 @@
 #'   feature_id columns. Default is "|".
 #' @param name String. Identifier for the dataset.
 #' @param n_cores Integer. Number of threads for fast reading.
+#' @param binarize Logical. Should the data matrix be converted to binary?
 #'
 #' @return A 'coreact_data' object.
 #' @importFrom data.table fread setDF
@@ -23,7 +24,8 @@ import_coreact_tsv <- function(path,
                                feature_id = NULL,
                                feature_id_sep = "|",
                                name = "unknown",
-                               n_cores = 1) {
+                               n_cores = 1,
+                               binarize = FALSE) {
 
   if (!file.exists(path)) stop(sprintf("File not found: %s", path))
 
@@ -90,6 +92,8 @@ import_coreact_tsv <- function(path,
   # Remove all metadata columns
   mat_raw <- as.matrix(dt[, -meta_idx, drop = FALSE])
   rownames(mat_raw) <- row_names
+
+  if (binarize == TRUE) mat_raw <- +(mat_raw >= 1)
 
   # Cleanup
   rm(dt); gc()
