@@ -7,7 +7,7 @@
 new_coreact_data(mat, meta, name = "unknown")
 }
 \arguments{
-\item{mat}{A sparse matrix (dgCMatrix) containing counts/values.
+\item{mat}{A sparse binary matrix (dgCMatrix) containing counts/values.
 Rows are features, columns are samples.}
 
 \item{meta}{A data.frame containing feature metadata (e.g., Gene Symbols).

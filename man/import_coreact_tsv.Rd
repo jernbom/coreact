@@ -10,7 +10,8 @@ import_coreact_tsv(
   feature_id = NULL,
   feature_id_sep = "|",
   name = "unknown",
-  n_cores = 1
+  n_cores = 1,
+  binarize = FALSE
 )
 }
 \arguments{
@@ -30,6 +31,8 @@ feature_id columns. Default is "|".}
 \item{name}{String. Identifier for the dataset.}
 
 \item{n_cores}{Integer. Number of threads for fast reading.}
+
+\item{binarize}{Logical. Should the data matrix be converted to binary?}
 }
 \value{
 A 'coreact_data' object.
