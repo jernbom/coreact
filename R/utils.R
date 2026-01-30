@@ -141,6 +141,7 @@ is_binary_matrix <- function(x) {
 #' @param cols Vector (character or integer). The sample names or indices to retain.
 #'
 #' @return A `coreact_data` object with the subsetted matrix.
+#' @importFrom utils head
 #' @keywords internal
 apply_sample_filter <- function(obj, cols) {
   current_cols <- colnames(obj$mat)
