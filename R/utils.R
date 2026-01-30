@@ -130,3 +130,38 @@ is_binary_matrix <- function(x) {
     return(!any(x != 0 & x != 1))
   }
 }
+
+#' Apply Sample Column Filtering
+#'
+#' Subsets the data matrix of a `coreact_data` object to keep only the specified
+#' sample columns. Validates that the requested columns exist (if character) or
+#' are within bounds (if numeric).
+#'
+#' @param obj A `coreact_data` object containing a sparse matrix `mat`.
+#' @param cols Vector (character or integer). The sample names or indices to retain.
+#'
+#' @return A `coreact_data` object with the subsetted matrix.
+#' @keywords internal
+apply_sample_filter <- function(obj, cols) {
+  current_cols <- colnames(obj$mat)
+
+  # If character, check existence
+  if (is.character(cols)) {
+    missing <- setdiff(cols, current_cols)
+    if (length(missing) > 0) {
+      stop(sprintf("Error in '%s': Specified sample columns not found: %s",
+                   obj$name, paste(head(missing, 5), collapse = ", ")))
+    }
+    keep_idx <- match(cols, current_cols)
+  } else {
+    # If numeric/integer
+    if (any(cols > ncol(obj$mat)) || any(cols < 1)) {
+      stop(sprintf("Error in '%s': Sample column indices out of bounds.", obj$name))
+    }
+    keep_idx <- cols
+  }
+
+  # Apply subset to matrix only (metadata is row-bound, not column-bound)
+  obj$mat <- obj$mat[, keep_idx, drop = FALSE]
+  return(obj)
+}
