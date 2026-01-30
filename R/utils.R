@@ -94,3 +94,39 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
 
   data.table::fwrite(export_df, file = meta_file, sep = "\t", quote = FALSE)
 }
+
+#' Check if a Matrix is Binary (0/1)
+#'
+#' @description
+#' Efficiently determines whether a matrix (dense or sparse) contains only
+#' values of 0 and 1.
+#'
+#' @details
+#' This function is optimized for performance depending on the input type:
+#' \itemize{
+#'   \item **Sparse Matrices (`dgCMatrix`):** It inspects only the stored values
+#'   in the `@x` slot. Since implicit (non-stored) values are always 0, verifying
+#'   that explicit values are either 0 or 1 is sufficient. This avoids expanding
+#'   the matrix.
+#'   \item **Dense Matrices:** It uses `any()` with short-circuiting logic. The
+#'   scan stops immediately upon finding a value that is not 0 or 1.
+#' }
+#'
+#' @param x A matrix-like object (base `matrix` or `Matrix::sparseMatrix`).
+#'
+#' @return `TRUE` if all elements are 0 or 1; otherwise `FALSE`.
+#'
+#' @keywords internal
+#' # @export
+is_binary_matrix <- function(x) {
+  if (inherits(x, "sparseMatrix")) {
+    # Check only stored values (@x slot)
+    # If a value is stored, it must be 0 or 1.
+    # (Implicit values are always 0, which is valid).
+    return(all(x@x %in% c(0, 1)))
+  } else {
+    # Short-circuit check for dense matrices
+    # Returns FALSE immediately if a non-0/1 value is found
+    return(!any(x != 0 & x != 1))
+  }
+}

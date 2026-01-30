@@ -3,7 +3,7 @@
 #' Internal constructor to create a `coreact_data` object.
 #' Strict validation: Row names must be present, unique, and identical in both inputs.
 #'
-#' @param mat A sparse matrix (dgCMatrix) containing counts/values.
+#' @param mat A sparse binary matrix (dgCMatrix) containing counts/values.
 #'   Rows are features, columns are samples.
 #' @param meta A data.frame containing feature metadata (e.g., Gene Symbols).
 #'   Number of rows must match `mat`.
@@ -43,7 +43,12 @@ new_coreact_data <- function(mat, meta, name = "unknown") {
 
   if (any(duplicated(rownames(mat))) || any(duplicated(rownames(meta)))) stop("Row names must be unique.")
 
-  # 4. Create Object
+  # 4. Value Validation
+
+  is_binary <- is_binary_matrix(mat)
+  if (!is_binary) stop("Input 'mat' must be a binary matrix.")
+
+  # 5. Create Object
   structure(
     list(
       mat = mat,

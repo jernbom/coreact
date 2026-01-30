@@ -11,6 +11,7 @@
 #'   If a vector, applied to both X and Y.
 #'   If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.
 #' @param feature_id_sep String. Separator for Feature IDs.
+#' @param binarize Logical vector (length 1 or 2). Should the input data matrices (non-meta columns) be converted to binary?
 #' @param min_prevalence Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
 #'   to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.
 #' @param filter_config List of structural filters (e.g., `min_intersection`).
@@ -24,6 +25,7 @@ coreact_pipeline <- function(paths,
                              meta_cols = 1,
                              feature_ids = NULL,
                              feature_id_sep = "|",
+                             binarize = FALSE,
                              min_prevalence = 0,
                              filter_config = list(min_intersection = 1),
                              fdr_threshold = 0.05,
@@ -38,6 +40,10 @@ coreact_pipeline <- function(paths,
   m_cols <- resolve_xy_args(meta_cols, "meta_cols")
   f_ids  <- resolve_xy_args(feature_ids, "feature_ids")
 
+  # Binarize recycling
+  if (length(binarize) > 2) stop("binarize must have length 1 or 2.")
+  if (length(binarize) == 1) binarize <- rep(binarize, 2)
+
   # Prevalence recycling
   if (length(min_prevalence) > 2) stop("min_prevalence must have length 1 or 2.")
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
@@ -50,7 +56,8 @@ coreact_pipeline <- function(paths,
     feature_id = f_ids$x,
     feature_id_sep = feature_id_sep,
     name = names[1],
-    n_cores = n_cores
+    n_cores = n_cores,
+    binarize = binarize[1]
   )
 
   # Load Y
@@ -60,7 +67,8 @@ coreact_pipeline <- function(paths,
     feature_id = f_ids$y,
     feature_id_sep = feature_id_sep,
     name = names[2],
-    n_cores = n_cores
+    n_cores = n_cores,
+    binarize = binarize[2]
   )
 
   # --- 3. Consistency Checks ---
