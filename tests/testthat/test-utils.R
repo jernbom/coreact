@@ -73,6 +73,38 @@ test_that("filter_by_prevalence filters correctly", {
   expect_error(filter_by_prevalence(obj, 5), "Filter removed all features")
 })
 
+test_that("apply_sample_filter filters samples correctly", {
+  obj <- make_dummy_obj()
+
+  # 1. Valid Character Subset
+  res_char <- apply_sample_filter(obj, c("S1", "S3"))
+  expect_equal(ncol(res_char$mat), 2)
+  expect_equal(colnames(res_char$mat), c("S1", "S3"))
+  # Metadata rows should remain unchanged (still 5 features)
+  expect_equal(nrow(res_char$meta), 5)
+
+  # 2. Valid Numeric Subset
+  res_num <- apply_sample_filter(obj, c(2, 4))
+  expect_equal(ncol(res_num$mat), 2)
+  expect_equal(colnames(res_num$mat), c("S2", "S4"))
+
+  # 3. Reordering
+  res_reorder <- apply_sample_filter(obj, c("S4", "S1"))
+  expect_equal(colnames(res_reorder$mat), c("S4", "S1"))
+
+  # 4. Error: Missing Columns (Character)
+  expect_error(
+    apply_sample_filter(obj, c("S1", "WrongCol")),
+    "Specified sample columns not found"
+  )
+
+  # 5. Error: Out of Bounds (Numeric)
+  expect_error(
+    apply_sample_filter(obj, c(1, 99)),
+    "indices out of bounds"
+  )
+})
+
 test_that("write_metadata_sidecar writes correct files", {
   obj <- make_dummy_obj()
   tmp_dir <- tempdir()

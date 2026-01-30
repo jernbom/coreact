@@ -8,6 +8,7 @@ library(data.table)
 # Create dummy Coreact Object
 make_obj <- function(n_rows, n_cols, prefix = "G") {
   # rand.x = function(n) rep(1, n) forces all non-zero values to be exactly 1
+  # This ensures it passes the strict is_binary_matrix check
   mat <- Matrix::rsparsematrix(n_rows, n_cols, density = 0.5,
                                rand.x = function(n) rep(1, n))
 
@@ -28,18 +29,27 @@ make_obj <- function(n_rows, n_cols, prefix = "G") {
 }
 
 # Write temp TSV for pipeline test
-write_pipeline_tsv <- function(rows, cols, prefix) {
+# Updated to accept explicit column names for testing mismatches
+write_pipeline_tsv <- function(rows, cols_arg, prefix) {
+
+  if (is.numeric(cols_arg) && length(cols_arg) == 1) {
+    col_names <- paste0("S", 1:cols_arg)
+  } else {
+    col_names <- cols_arg
+  }
+  n_cols <- length(col_names)
+
   # sample(0:1) generates binary integers
-  mat <- matrix(sample(0:1, rows * cols, replace = TRUE), nrow = rows)
+  mat <- matrix(sample(0:1, rows * n_cols, replace = TRUE), nrow = rows)
   df <- as.data.frame(mat)
-  colnames(df) <- paste0("S", 1:cols)
+  colnames(df) <- col_names
 
   # Add ID column
   df$FeatureID <- paste0(prefix, 1:rows)
   df$Desc <- paste0("Desc_", df$FeatureID)
 
   # Reorder: ID, Desc, Samples...
-  df <- df[, c("FeatureID", "Desc", paste0("S", 1:cols))]
+  df <- df[, c("FeatureID", "Desc", col_names)]
 
   tmp <- tempfile(fileext = ".tsv")
   write.table(df, file = tmp, sep = "\t", row.names = FALSE, quote = FALSE)
@@ -123,12 +133,47 @@ test_that("coreact_pipeline runs end-to-end", {
   expect_true(file.exists(side_x))
 })
 
-test_that("coreact_pipeline validates inputs", {
+test_that("coreact_pipeline supports sample_cols filtering", {
+  # Scenario: Two files have different samples, but share S3 and S4.
+  # X: S1, S2, S3, S4
+  # Y: S3, S4, S5, S6
+  path_x <- write_pipeline_tsv(10, c("S1", "S2", "S3", "S4"), "X")
+  path_y <- write_pipeline_tsv(10, c("S3", "S4", "S5", "S6"), "Y")
+  out_path <- file.path(tempdir(), "filtered_results.tsv")
+
+  # 1. Without sample_cols -> Should FAIL strict consistency check
+  expect_error(
+    coreact_pipeline(
+      paths = c(path_x, path_y),
+      out_path = out_path,
+      meta_cols = c("FeatureID", "Desc"),
+      feature_ids = 1
+    ),
+    "Sample identifiers.*not identical"
+  )
+
+  # 2. With sample_cols -> Should PASS
+  expect_message(
+    coreact_pipeline(
+      paths = c(path_x, path_y),
+      out_path = out_path,
+      meta_cols = c("FeatureID", "Desc"),
+      feature_ids = 1,
+      sample_cols = c("S3", "S4"),
+      fdr_threshold = 1.0  # <--- FIX: Ensure results are kept even if insignificant
+    ),
+    "Pipeline completed successfully"
+  )
+
+  # Check that output is generated
+  expect_true(file.exists(out_path))
+})
+
+test_that("coreact_pipeline validates mismatched inputs", {
   p1 <- write_pipeline_tsv(5, 3, "A")
   p2 <- write_pipeline_tsv(5, 4, "B") # Different n columns
 
   # We must specify BOTH metadata columns (1 and 2).
-  # Otherwise column 2 ("Desc") is treated as data, creating a character matrix.
   expect_error(
     coreact_pipeline(
       paths = c(p1, p2),
