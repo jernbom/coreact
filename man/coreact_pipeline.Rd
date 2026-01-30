@@ -11,6 +11,7 @@ coreact_pipeline(
   meta_cols = 1,
   feature_ids = NULL,
   feature_id_sep = "|",
+  binarize = FALSE,
   min_prevalence = 0,
   filter_config = list(min_intersection = 1),
   fdr_threshold = 0.05,
@@ -35,6 +36,8 @@ If a vector, applied to both X and Y.
 If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.}
 
 \item{feature_id_sep}{String. Separator for Feature IDs.}
+
+\item{binarize}{Logical vector (length 1 or 2). Should the input data matrices (non-meta columns) be converted to binary?}
 
 \item{min_prevalence}{Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
 to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.}
