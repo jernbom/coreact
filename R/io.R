@@ -21,6 +21,9 @@
 #'
 #' @return A 'coreact_data' object.
 #' @importFrom data.table fread setDF
+#' @importFrom Matrix Matrix
+#' @importFrom methods new
+#' @importFrom utils head
 #' @export
 import_coreact_tsv <- function(path,
                                meta_cols = 1,
