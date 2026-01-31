@@ -1,10 +1,10 @@
 Package: coreact
 Title: High-Performance Co-reactivity Analysis
-Version: 1.1.0
+Version: 1.2.0
 Authors@R: person("August F.", "Jernbom", , "ajernbom@jhmi.edu", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-7773-1851"))
 Description: Optimized pipeline for calculating co-occurrence statistics (Hypergeometric test, Jaccard index, Overlap coefficient) 
     between two sparse matrices. Uses adaptive matrix/vector algebra and parallel processing.
-License: GPL (>= 3)
+License: AGPL (>= 3)
 Encoding: UTF-8
 Imports: 
     Matrix,
