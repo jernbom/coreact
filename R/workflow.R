@@ -88,8 +88,8 @@ coreact_pipeline <- function(paths,
 
   # --- 4. Consistency Checks ---
   if (!identical(colnames(obj_x$mat), colnames(obj_y$mat))) {
-    stop("Error: Sample identifiers (columns) in matrices X and Y are not identical. ",
-         "If using 'sample_cols', ensure both datasets are filtered to the exact same sample set.")
+    # Generate detailed error report
+    stop(format_col_mismatch(obj_x$mat, obj_y$mat, names[1], names[2]))
   }
 
   # --- 5. Pre-Filtering (Rows/Features) ---
@@ -149,6 +149,7 @@ coreact_pipeline <- function(paths,
 
   message("Pipeline completed successfully.")
 }
+
 
 #' Run Coreact Engine (Internal)
 #'
