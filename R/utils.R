@@ -137,7 +137,7 @@ is_binary_matrix <- function(x) {
 #' @param mat_y Matrix Y
 #' @param name_x Name of dataset X
 #' @param name_y Name of dataset Y
-#'
+#' @importFrom utils head
 #' @return A formatted error string detailing specific mismatches.
 #' @keywords internal
 format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
@@ -175,11 +175,11 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
   msg <- paste0(msg, "If using 'sample_cols', ensure both datasets resolve to the exact same sample set.\nDetails:\n")
 
   if (length(in_x_not_y) > 0) {
-    msg <- paste0(msg, sprintf("  • Found in '%s' but missing in '%s' (%d cols): %s\n",
+    msg <- paste0(msg, sprintf("Found in '%s' but missing in '%s' (%d cols): %s\n",
                                name_x, name_y, length(in_x_not_y), fmt_list(in_x_not_y, cx)))
   }
   if (length(in_y_not_x) > 0) {
-    msg <- paste0(msg, sprintf("  • Found in '%s' but missing in '%s' (%d cols): %s\n",
+    msg <- paste0(msg, sprintf("Found in '%s' but missing in '%s' (%d cols): %s\n",
                                name_y, name_x, length(in_y_not_x), fmt_list(in_y_not_x, cy)))
   }
 
@@ -194,7 +194,8 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
 #'
 #' @param path_x Path to the first TSV file (dataset X).
 #' @param path_y Path to the second TSV file (dataset Y).
-#'
+#' @importFrom utils head
+#' @importFrom data.table fread
 #' @return A data.frame showing indices and column names for both files side-by-side.
 #'   Returns invisibly; prints to console by default.
 #' @export
