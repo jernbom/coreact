@@ -6,9 +6,9 @@ library(data.table)
 # --- Helpers ---
 
 # Create dummy Coreact Object
+# Uses rsparsematrix with a specific rand.x to ensure all non-zero values are exactly 1
+# This is required to pass the strict 'is_binary_matrix' check in new_coreact_data
 make_obj <- function(n_rows, n_cols, prefix = "G") {
-  # rand.x = function(n) rep(1, n) forces all non-zero values to be exactly 1
-  # This ensures it passes the strict is_binary_matrix check
   mat <- Matrix::rsparsematrix(n_rows, n_cols, density = 0.5,
                                rand.x = function(n) rep(1, n))
 
@@ -29,7 +29,7 @@ make_obj <- function(n_rows, n_cols, prefix = "G") {
 }
 
 # Write temp TSV for pipeline test
-# Updated to accept explicit column names for testing mismatches
+# Accepts explicit column names to allow testing of mismatched files
 write_pipeline_tsv <- function(rows, cols_arg, prefix) {
 
   if (is.numeric(cols_arg) && length(cols_arg) == 1) {
@@ -116,6 +116,7 @@ test_that("coreact_pipeline runs end-to-end", {
     coreact_pipeline(
       paths = c(path_x, path_y),
       out_path = out_path,
+      names = c("DataX", "DataY"),
       meta_cols = c("FeatureID", "Desc"),
       feature_ids = "FeatureID",
       filter_config = list(min_intersection = 1),
@@ -129,6 +130,7 @@ test_that("coreact_pipeline runs end-to-end", {
   expect_true(nrow(res) > 0)
   expect_true("p_adj" %in% colnames(res))
 
+  # Check Sidecar Metadata
   side_x <- sub("\\.tsv$", "_metadata_x.tsv", out_path)
   expect_true(file.exists(side_x))
 })
@@ -153,6 +155,7 @@ test_that("coreact_pipeline supports sample_cols filtering", {
   )
 
   # 2. With sample_cols -> Should PASS
+  # Note: fdr_threshold=1.0 ensures we don't filter out results, validating the pipeline ran
   expect_message(
     coreact_pipeline(
       paths = c(path_x, path_y),
@@ -160,7 +163,7 @@ test_that("coreact_pipeline supports sample_cols filtering", {
       meta_cols = c("FeatureID", "Desc"),
       feature_ids = 1,
       sample_cols = c("S3", "S4"),
-      fdr_threshold = 1.0  # <--- FIX: Ensure results are kept even if insignificant
+      fdr_threshold = 1.0
     ),
     "Pipeline completed successfully"
   )

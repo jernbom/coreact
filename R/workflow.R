@@ -61,6 +61,7 @@ coreact_pipeline <- function(paths,
   obj_x <- import_coreact_tsv(
     paths[1],
     meta_cols = m_cols$x,
+    sample_cols = if (!is.null(s_cols)) s_cols$x else NULL,
     feature_id = f_ids$x,
     feature_id_sep = feature_id_sep,
     name = names[1],
@@ -72,6 +73,7 @@ coreact_pipeline <- function(paths,
   obj_y <- import_coreact_tsv(
     paths[2],
     meta_cols = m_cols$y,
+    sample_cols = if (!is.null(s_cols)) s_cols$y else NULL,
     feature_id = f_ids$y,
     feature_id_sep = feature_id_sep,
     name = names[2],
@@ -79,26 +81,19 @@ coreact_pipeline <- function(paths,
     binarize = binarize[2]
   )
 
-  # --- 3. Optional Sample Filtering ---
-  if (!is.null(s_cols)) {
-    message("Filtering sample columns...")
-    obj_x <- apply_sample_filter(obj_x, s_cols$x)
-    obj_y <- apply_sample_filter(obj_y, s_cols$y)
-  }
-
-  # --- 4. Consistency Checks ---
+  # --- 3. Consistency Checks ---
   if (!identical(colnames(obj_x$mat), colnames(obj_y$mat))) {
     # Generate detailed error report
     stop(format_col_mismatch(obj_x$mat, obj_y$mat, names[1], names[2]))
   }
 
-  # --- 5. Pre-Filtering (Rows/Features) ---
+  # --- 4. Pre-Filtering (Rows/Features) ---
   obj_x <- filter_by_prevalence(obj_x, min_prevalence[1])
   obj_y <- filter_by_prevalence(obj_y, min_prevalence[2])
 
   gc()
 
-  # --- 6. Compute (Engine) ---
+  # --- 5. Compute (Engine) ---
   results <- run_coreact(
     data_x = obj_x,
     data_y = obj_y,
@@ -107,7 +102,7 @@ coreact_pipeline <- function(paths,
     filter_config = filter_config
   )
 
-  # --- 7. Post-Processing (FDR & Write) ---
+  # --- 6. Post-Processing (FDR & Write) ---
   if (nrow(results) > 0) {
     # Calculate FDR
     results$p_adj <- stats::p.adjust(results$p_val, method = "fdr")
@@ -122,14 +117,14 @@ coreact_pipeline <- function(paths,
   # Write Main Interactions File
   if (nrow(results) == 0) warning("No significant results found. Writing empty file.")
 
-  message(sprintf("Writing results to %s ...", out_path))
+  message(sprintf("Writing %d results to %s ...", nrow(results), out_path))
 
   out_dir <- dirname(out_path)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
   data.table::fwrite(results, file = out_path, sep = "\t", quote = FALSE)
 
-  # --- 8. Write Sidecar Metadata ---
+  # --- 7. Write Sidecar Metadata ---
   ids_x_final <- if (nrow(results) > 0) unique(results$feature_x) else character(0)
   ids_y_final <- if (nrow(results) > 0) unique(results$feature_y) else character(0)
 
@@ -149,7 +144,6 @@ coreact_pipeline <- function(paths,
 
   message("Pipeline completed successfully.")
 }
-
 
 #' Run Coreact Engine (Internal)
 #'
