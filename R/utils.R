@@ -94,3 +94,150 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
 
   data.table::fwrite(export_df, file = meta_file, sep = "\t", quote = FALSE)
 }
+
+#' Check if a Matrix is Binary (0/1)
+#'
+#' @description
+#' Efficiently determines whether a matrix (dense or sparse) contains only
+#' values of 0 and 1.
+#'
+#' @details
+#' This function is optimized for performance depending on the input type:
+#' \itemize{
+#'   \item **Sparse Matrices (`dgCMatrix`):** It inspects only the stored values
+#'   in the `@x` slot. Since implicit (non-stored) values are always 0, verifying
+#'   that explicit values are either 0 or 1 is sufficient. This avoids expanding
+#'   the matrix.
+#'   \item **Dense Matrices:** It uses `any()` with short-circuiting logic. The
+#'   scan stops immediately upon finding a value that is not 0 or 1.
+#' }
+#'
+#' @param x A matrix-like object (base `matrix` or `Matrix::sparseMatrix`).
+#'
+#' @return `TRUE` if all elements are 0 or 1; otherwise `FALSE`.
+#'
+#' @keywords internal
+#' # @export
+is_binary_matrix <- function(x) {
+  if (inherits(x, "sparseMatrix")) {
+    # Check only stored values (@x slot)
+    # If a value is stored, it must be 0 or 1.
+    # (Implicit values are always 0, which is valid).
+    return(all(x@x %in% c(0, 1)))
+  } else {
+    # Short-circuit check for dense matrices
+    # Returns FALSE immediately if a non-0/1 value is found
+    return(!any(x != 0 & x != 1))
+  }
+}
+
+#' Format Column Mismatch Error (Internal Helper)
+#'
+#' @param mat_x Matrix X
+#' @param mat_y Matrix Y
+#' @param name_x Name of dataset X
+#' @param name_y Name of dataset Y
+#' @importFrom utils head
+#' @return A formatted error string detailing specific mismatches.
+#' @keywords internal
+format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
+  cx <- colnames(mat_x)
+  cy <- colnames(mat_y)
+
+  # 1. Identify discrepancies
+  in_x_not_y <- setdiff(cx, cy)
+  in_y_not_x <- setdiff(cy, cx)
+
+  # Base error message
+  msg <- sprintf("Error: Sample identifiers (columns) in '%s' and '%s' are not identical.\n",
+                 name_x, name_y)
+
+  # 2. Case: Identical content, wrong order
+  if (length(in_x_not_y) == 0 && length(in_y_not_x) == 0) {
+    return(paste0(msg, "The datasets contain the same sample names, but in a different order. ",
+                  "Please sort or align the columns to match exactly."))
+  }
+
+  # 3. Case: Content Mismatch - Helper to format list
+  # Returns: "ColName (Idx 5), OtherCol (Idx 9)..."
+  fmt_list <- function(diffs, all_cols) {
+    idxs <- match(diffs, all_cols)
+    items <- paste0("'", diffs, "' (Idx ", idxs, ")")
+    if (length(items) > 5) {
+      paste0(paste(head(items, 5), collapse = ", "),
+             sprintf(", ... (+%d more)", length(items) - 5))
+    } else {
+      paste(items, collapse = ", ")
+    }
+  }
+
+  # 4. Append details
+  msg <- paste0(msg, "If using 'sample_cols', ensure both datasets resolve to the exact same sample set.\nDetails:\n")
+
+  if (length(in_x_not_y) > 0) {
+    msg <- paste0(msg, sprintf("Found in '%s' but missing in '%s' (%d cols): %s\n",
+                               name_x, name_y, length(in_x_not_y), fmt_list(in_x_not_y, cx)))
+  }
+  if (length(in_y_not_x) > 0) {
+    msg <- paste0(msg, sprintf("Found in '%s' but missing in '%s' (%d cols): %s\n",
+                               name_y, name_x, length(in_y_not_x), fmt_list(in_y_not_x, cy)))
+  }
+
+  return(msg)
+}
+
+#' Preview Column Names and Indices
+#'
+#' A helper utility to inspect the headers of two TSV files side-by-side.
+#' This assists in identifying the correct indices for `meta_cols`, `sample_cols`,
+#' or `feature_ids` before running the pipeline.
+#'
+#' @param path_x Path to the first TSV file (dataset X).
+#' @param path_y Path to the second TSV file (dataset Y).
+#' @importFrom utils head
+#' @importFrom data.table fread
+#' @return A data.frame showing indices and column names for both files side-by-side.
+#'   Returns invisibly; prints to console by default.
+#' @export
+preview_cols <- function(path_x, path_y) {
+
+  if (!file.exists(path_x)) stop("File not found: ", path_x)
+  if (!file.exists(path_y)) stop("File not found: ", path_y)
+
+  # Read only headers efficiently
+  cols_x <- names(data.table::fread(path_x, nrows = 0))
+  cols_y <- names(data.table::fread(path_y, nrows = 0))
+
+  len_x <- length(cols_x)
+  len_y <- length(cols_y)
+  max_len <- max(len_x, len_y)
+
+  # Pad shorter vector with NA
+  pad_vec <- function(v, n) {
+    if (length(v) < n) c(v, rep(NA, n - length(v))) else v
+  }
+
+  # Pad indices for display
+  idx_x <- seq_len(len_x)
+  idx_y <- seq_len(len_y)
+
+  # Construct display table
+  df <- data.frame(
+    Idx_X  = pad_vec(idx_x, max_len),
+    Name_X = pad_vec(cols_x, max_len),
+    " | "  = rep("|", max_len), # Visual separator
+    Idx_Y  = pad_vec(idx_y, max_len),
+    Name_Y = pad_vec(cols_y, max_len),
+    check.names = FALSE,
+    stringsAsFactors = FALSE
+  )
+
+  # Handle NA indices to look cleaner (optional, depends on preference)
+  df$Idx_X[is.na(df$Idx_X)] <- ""
+  df$Idx_Y[is.na(df$Idx_Y)] <- ""
+  df$Name_X[is.na(df$Name_X)] <- ""
+  df$Name_Y[is.na(df$Name_Y)] <- ""
+
+  print(df, row.names = FALSE, right = FALSE)
+  return(invisible(df))
+}
