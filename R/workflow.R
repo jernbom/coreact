@@ -3,16 +3,21 @@
 #' @param paths Character vector (length 2). Paths to input TSV files (X and Y).
 #' @param out_path Path for result file.
 #' @param names Character vector (length 2). Names for datasets X and Y.
-#'   Default `c("Input_X", "Input_Y")`.
+#'    Default `c("Input_X", "Input_Y")`.
 #' @param meta_cols List or Vector. Names or indices of metadata columns.
-#'   If a vector, applied to both X and Y.
-#'   If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.
+#'    If a vector, applied to both X and Y.
+#'    If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.
+#' @param sample_cols Optional List or Vector (default=`NULL`). Names or indices of sample columns.
+#'    If a vector, applied to both X and Y.
+#'    If a list of length 2, `sample_cols[[1]]` is used for X, `sample_cols[[2]]` for Y.
+#'    If `NULL`, all columns not defined in `meta_cols` are used as sample columns.
 #' @param feature_ids List or Vector. Names or indices of columns for constructing unique Feature IDs. If `NULL`, row numbers are used.
-#'   If a vector, applied to both X and Y.
-#'   If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.
+#'    If a vector, applied to both X and Y.
+#'    If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.
 #' @param feature_id_sep String. Separator for Feature IDs.
+#' @param binarize Logical vector (length 1 or 2). Should the input data matrices (non-meta columns) be converted to binary?
 #' @param min_prevalence Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
-#'   to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.
+#'    to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.
 #' @param filter_config List of structural filters (e.g., `min_intersection`).
 #' @param fdr_threshold Numeric. Max FDR to retain (default 0.05). If `NULL`, no filtering.
 #' @param n_cores Integer. Number of cores.
@@ -22,8 +27,10 @@ coreact_pipeline <- function(paths,
                              out_path,
                              names = c("Input_X", "Input_Y"),
                              meta_cols = 1,
+                             sample_cols = NULL,
                              feature_ids = NULL,
                              feature_id_sep = "|",
+                             binarize = FALSE,
                              min_prevalence = 0,
                              filter_config = list(min_intersection = 1),
                              fdr_threshold = 0.05,
@@ -38,6 +45,13 @@ coreact_pipeline <- function(paths,
   m_cols <- resolve_xy_args(meta_cols, "meta_cols")
   f_ids  <- resolve_xy_args(feature_ids, "feature_ids")
 
+  # Resolve sample_cols if present
+  s_cols <- if (!is.null(sample_cols)) resolve_xy_args(sample_cols, "sample_cols") else NULL
+
+  # Binarize recycling
+  if (length(binarize) > 2) stop("binarize must have length 1 or 2.")
+  if (length(binarize) == 1) binarize <- rep(binarize, 2)
+
   # Prevalence recycling
   if (length(min_prevalence) > 2) stop("min_prevalence must have length 1 or 2.")
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
@@ -47,28 +61,33 @@ coreact_pipeline <- function(paths,
   obj_x <- import_coreact_tsv(
     paths[1],
     meta_cols = m_cols$x,
+    sample_cols = if (!is.null(s_cols)) s_cols$x else NULL,
     feature_id = f_ids$x,
     feature_id_sep = feature_id_sep,
     name = names[1],
-    n_cores = n_cores
+    n_cores = n_cores,
+    binarize = binarize[1]
   )
 
   # Load Y
   obj_y <- import_coreact_tsv(
     paths[2],
     meta_cols = m_cols$y,
+    sample_cols = if (!is.null(s_cols)) s_cols$y else NULL,
     feature_id = f_ids$y,
     feature_id_sep = feature_id_sep,
     name = names[2],
-    n_cores = n_cores
+    n_cores = n_cores,
+    binarize = binarize[2]
   )
 
   # --- 3. Consistency Checks ---
   if (!identical(colnames(obj_x$mat), colnames(obj_y$mat))) {
-    stop("Error: Sample identifiers (columns) in matrices X and Y are not identical.")
+    # Generate detailed error report
+    stop(format_col_mismatch(obj_x$mat, obj_y$mat, names[1], names[2]))
   }
 
-  # --- 4. Pre-Filtering ---
+  # --- 4. Pre-Filtering (Rows/Features) ---
   obj_x <- filter_by_prevalence(obj_x, min_prevalence[1])
   obj_y <- filter_by_prevalence(obj_y, min_prevalence[2])
 
@@ -98,7 +117,7 @@ coreact_pipeline <- function(paths,
   # Write Main Interactions File
   if (nrow(results) == 0) warning("No significant results found. Writing empty file.")
 
-  message(sprintf("Writing results to %s ...", out_path))
+  message(sprintf("Writing %d results to %s ...", nrow(results), out_path))
 
   out_dir <- dirname(out_path)
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
@@ -106,12 +125,9 @@ coreact_pipeline <- function(paths,
   data.table::fwrite(results, file = out_path, sep = "\t", quote = FALSE)
 
   # --- 7. Write Sidecar Metadata ---
-  # Extract the unique IDs present in the final result set
-  # If results are empty, these will be character(0), resulting in empty metadata files
   ids_x_final <- if (nrow(results) > 0) unique(results$feature_x) else character(0)
   ids_y_final <- if (nrow(results) > 0) unique(results$feature_y) else character(0)
 
-  # Write Metadata X
   write_metadata_sidecar(
     obj = obj_x,
     keep_ids = ids_x_final,
@@ -119,7 +135,6 @@ coreact_pipeline <- function(paths,
     suffix = "x"
   )
 
-  # Write Metadata Y
   write_metadata_sidecar(
     obj = obj_y,
     keep_ids = ids_y_final,

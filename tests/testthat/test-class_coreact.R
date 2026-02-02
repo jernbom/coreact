@@ -3,7 +3,9 @@ library(Matrix)
 
 # --- Helper to create dummy data for tests ---
 create_dummy_data <- function(n_rows = 5, n_cols = 3) {
-  mat <- Matrix::rsparsematrix(n_rows, n_cols, density = 0.5)
+  mat <- Matrix::rsparsematrix(n_rows, n_cols, density = 0.5,
+                               rand.x = function(n) stats::rbinom(n, 1, 1))
+
   row_ids <- paste0("Gene_", seq_len(n_rows))
   col_ids <- paste0("Sample_", seq_len(n_cols))
   rownames(mat) <- row_ids
@@ -28,6 +30,21 @@ test_that("new_coreact_data creates valid objects", {
   expect_identical(rownames(obj$mat), rownames(obj$meta))
 })
 
+test_that("new_coreact_data enforces binary data", {
+  d <- create_dummy_data()
+
+  # Inject a non-binary value (e.g., 5)
+  bad_mat <- d$mat
+  bad_mat[1, 1] <- 5
+
+  expect_error(new_coreact_data(bad_mat, d$meta), "must be a binary matrix")
+
+  # Inject a negative value
+  bad_mat2 <- d$mat
+  bad_mat2[1, 1] <- -1
+  expect_error(new_coreact_data(bad_mat2, d$meta), "must be a binary matrix")
+})
+
 test_that("new_coreact_data enforces strict row name presence", {
   d <- create_dummy_data()
 
@@ -37,9 +54,6 @@ test_that("new_coreact_data enforces strict row name presence", {
   expect_error(new_coreact_data(mat_unnamed, d$meta), "Input 'mat' must have row names")
 
   # Case 2: Metadata missing names
-  # Note: When rownames(df) <- NULL, they become "1", "2", ...
-  # This causes a mismatch with the matrix names ("Gene_1", ...).
-  # So the error caught will be the "must be identical" error.
   meta_unnamed <- d$meta
   rownames(meta_unnamed) <- NULL
   expect_error(new_coreact_data(d$mat, meta_unnamed), "must be identical")
@@ -54,7 +68,6 @@ test_that("new_coreact_data enforces identical row names", {
   expect_error(new_coreact_data(d$mat, bad_meta), "must be identical")
 
   # Case 2: Same names, different order
-  # Reverse metadata rows
   rev_meta <- d$meta[nrow(d$meta):1, ]
   expect_error(new_coreact_data(d$mat, rev_meta), "must be identical")
 })
@@ -85,7 +98,7 @@ test_that("cbind works correctly", {
   # Failure: Mismatched IDs
   d_diff <- create_dummy_data(n_rows = 5, n_cols = 2)
   rownames(d_diff$mat) <- paste0("Other_", 1:5)
-  rownames(d_diff$meta) <- paste0("Other_", 1:5) # Must match mat to pass constructor
+  rownames(d_diff$meta) <- paste0("Other_", 1:5)
   obj_diff <- new_coreact_data(d_diff$mat, d_diff$meta)
 
   expect_error(cbind.coreact_data(obj1, obj_diff), "Feature IDs")

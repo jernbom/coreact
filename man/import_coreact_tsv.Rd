@@ -7,10 +7,12 @@
 import_coreact_tsv(
   path,
   meta_cols = 1,
+  sample_cols = NULL,
   feature_id = NULL,
   feature_id_sep = "|",
   name = "unknown",
-  n_cores = 1
+  n_cores = 1,
+  binarize = FALSE
 )
 }
 \arguments{
@@ -18,6 +20,10 @@ import_coreact_tsv(
 
 \item{meta_cols}{Vector (integer or character). Indices or names of columns
 containing metadata.}
+
+\item{sample_cols}{Vector (integer or character) or NULL. Indices or names of
+columns to be used as sample data.
+If `NULL`, all columns NOT in `meta_cols` are used.}
 
 \item{feature_id}{Vector (integer or character). The columns to use to construct
 unique row names (Feature IDs). Must be a subset of `meta_cols`.
@@ -30,6 +36,8 @@ feature_id columns. Default is "|".}
 \item{name}{String. Identifier for the dataset.}
 
 \item{n_cores}{Integer. Number of threads for fast reading.}
+
+\item{binarize}{Logical. Should the data matrix be converted to binary?}
 }
 \value{
 A 'coreact_data' object.
