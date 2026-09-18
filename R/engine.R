@@ -1,14 +1,27 @@
 #' Internal Worker: Compute Co-occurrence Stats for a Chunk
 #'
+#' Computes intersection, union, Jaccard index, overlap coefficient and a
+#' one-sided hypergeometric p-value for every (row of X chunk) x (row of Y)
+#' pair, then keeps the pairs that pass the structural filters in `config`.
+#'
 #' @param idx_x_chunk Vector of absolute indices for the rows of X in this chunk.
 #' @param mat_x_chunk The actual data sub-matrix for X (dense or sparse).
 #' @param mat_y The full matrix Y (dense or sparse).
 #' @param prev_x_chunk Vector of prevalence (rowSums) for rows in X chunk.
 #' @param prev_y Vector of prevalence (rowSums) for all rows in Y.
 #' @param n_samples Integer, total number of samples (ncol).
-#' @param config List of name-value pairs of filter thresholds. Current valid options are: `min_intersection`, `min_jaccard`, `min_overlap`.
+#' @param config List of name-value pairs of filter thresholds. Current valid
+#'   options are: `min_intersection`, `min_jaccard`, `min_overlap`.
 #'
-#' @return A tibble of passing pairs with stats.
+#' @details
+#' The Jaccard index is undefined when both features are absent from every
+#' sample (union of size zero), and the overlap coefficient is undefined when
+#' either feature is absent from every sample. Such ratios are reported as
+#' `NA` and never pass a `min_jaccard` / `min_overlap` threshold. With the
+#' default `min_intersection = 1` these pairs are excluded anyway, because
+#' their intersection is zero.
+#'
+#' @return A tibble of passing pairs with stats, or `NULL` if none pass.
 #' @keywords internal
 worker_chunk_calc <- function(idx_x_chunk,
                               mat_x_chunk,
@@ -37,21 +50,19 @@ worker_chunk_calc <- function(idx_x_chunk,
   calc_jacc_filter <- !is.null(config$min_jaccard)
   calc_over_filter <- !is.null(config$min_overlap)
 
-  if (calc_jacc_filter || calc_over_filter) {
+  if (calc_jacc_filter) {
+    # Jaccard Denominator = (SizeX + SizeY) - Intersection
+    mat_denom_jacc <- outer(prev_x_chunk, prev_y, "+") - mat_int
+    mat_jacc <- safe_ratio(mat_int, mat_denom_jacc)
+    # An NA ratio never passes the threshold (`NA >= t` would poison the mask)
+    keep_mask <- keep_mask & !is.na(mat_jacc) & (mat_jacc >= config$min_jaccard)
+  }
 
-    if (calc_jacc_filter) {
-      # Jaccard Denominator = (SizeX + SizeY) - Intersection
-      mat_denom_jacc <- outer(prev_x_chunk, prev_y, "+") - mat_int
-      mat_jacc <- mat_int / mat_denom_jacc
-      keep_mask <- keep_mask & (mat_jacc >= config$min_jaccard)
-    }
-
-    if (calc_over_filter) {
-      # Overlap Denominator = min(SizeX, SizeY)
-      mat_denom_over <- outer(prev_x_chunk, prev_y, pmin)
-      mat_over <- mat_int / mat_denom_over
-      keep_mask <- keep_mask & (mat_over >= config$min_overlap)
-    }
+  if (calc_over_filter) {
+    # Overlap Denominator = min(SizeX, SizeY)
+    mat_denom_over <- outer(prev_x_chunk, prev_y, pmin)
+    mat_over <- safe_ratio(mat_int, mat_denom_over)
+    keep_mask <- keep_mask & !is.na(mat_over) & (mat_over >= config$min_overlap)
   }
 
   if (!any(keep_mask)) return(NULL)
@@ -72,17 +83,17 @@ worker_chunk_calc <- function(idx_x_chunk,
   if (calc_jacc_filter) {
     v_jacc <- mat_jacc[idx_pairs]
   } else {
-    v_jacc <- v_int / v_union
+    v_jacc <- safe_ratio(v_int, v_union)
   }
 
   if (calc_over_filter) {
     v_over <- mat_over[idx_pairs]
   } else {
-    v_over <- v_int / pmin(v_sz_x, v_sz_y)
+    v_over <- safe_ratio(v_int, pmin(v_sz_x, v_sz_y))
   }
 
   # --- 5. Compute P-values ---
-  # Hypergeometric test
+  # One-sided hypergeometric test for enrichment: P(intersection >= observed)
   v_pval <- stats::phyper(
     q = v_int - 1,
     m = v_sz_x,
@@ -103,4 +114,19 @@ worker_chunk_calc <- function(idx_x_chunk,
     overlap = as.vector(v_over),
     p_val = as.vector(v_pval)
   )
+}
+
+#' Ratio With Zero Denominators Mapped to NA (Internal)
+#'
+#' Element-wise `num / den`, returning `NA_real_` where `den == 0` instead of
+#' `NaN` (0/0) or `Inf` (x/0). Works on vectors and matrices; attributes of
+#' `num` are preserved.
+#'
+#' @param num,den Numeric vectors or matrices of the same shape.
+#' @return Numeric vector or matrix of the same shape as `num`.
+#' @keywords internal
+safe_ratio <- function(num, den) {
+  out <- num / den
+  out[den == 0] <- NA_real_
+  out
 }
