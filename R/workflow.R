@@ -15,11 +15,13 @@
 #'    If a vector, applied to both X and Y.
 #'    If a list of length 2, `sample_cols[[1]]` is used for X, `sample_cols[[2]]` for Y.
 #'    If `NULL`, all columns not defined in `meta_cols` are used as sample columns.
-#' @param feature_ids List or Vector. Names or indices of columns for constructing unique Feature IDs. If `NULL`, row numbers are used.
+#' @param feature_ids List or Vector. Names or indices of columns for constructing unique
+#'    Feature IDs. If `NULL`, row numbers are used.
 #'    If a vector, applied to both X and Y.
 #'    If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.
 #' @param feature_id_sep String. Separator for Feature IDs.
-#' @param binarize Logical vector (length 1 or 2). Should the input data matrices (non-meta columns) be converted to binary?
+#' @param binarize Logical vector (length 1 or 2). Should the input data matrices (non-meta
+#'    columns) be converted to binary?
 #' @param min_prevalence Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
 #'    to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.
 #' @param filter_config List of structural filters (e.g., `min_intersection`).
@@ -320,7 +322,7 @@ run_coreact <- function(data_x,
   run_fun <- function(idx) {
     worker_chunk_calc(
       idx_x_chunk = idx,
-      mat_x_chunk = data_x$mat[idx, , drop=FALSE],
+      mat_x_chunk = data_x$mat[idx, , drop = FALSE],
       mat_y = data_y$mat,
       prev_x_chunk = prev_x[idx],
       prev_y = prev_y,

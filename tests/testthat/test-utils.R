@@ -1,6 +1,3 @@
-library(testthat)
-library(Matrix)
-library(data.table)
 
 # --- Helper to create a dummy S3 object for testing ---
 make_dummy_obj <- function() {
@@ -129,20 +126,22 @@ test_that("is_binary_matrix accurately detects binary data", {
   # --- Dense Matrices ---
 
   # Valid Binary
-  m_dense_good <- matrix(c(0, 1, 1, 0), nrow=2)
+  m_dense_good <- matrix(c(0, 1, 1, 0), nrow = 2)
   expect_true(is_binary_matrix(m_dense_good))
 
   # Invalid
-  m_dense_bad <- matrix(c(0, 2, 1, 0), nrow=2)
+  m_dense_bad <- matrix(c(0, 2, 1, 0), nrow = 2)
   expect_false(is_binary_matrix(m_dense_bad))
 })
 
 test_that("format_col_mismatch generates informative errors", {
   # Mock matrices (content doesn't matter, only column names)
-  m_ref <- matrix(0, ncol=2); colnames(m_ref) <- c("S1", "S2")
+  m_ref <- matrix(0, ncol = 2)
+  colnames(m_ref) <- c("S1", "S2")
 
   # 1. Missing Column
-  m_miss <- matrix(0, ncol=2); colnames(m_miss) <- c("S1", "S3")
+  m_miss <- matrix(0, ncol = 2)
+  colnames(m_miss) <- c("S1", "S3")
   msg_miss <- format_col_mismatch(m_ref, m_miss, "Ref", "Test")
 
   expect_match(msg_miss, "Sample identifiers.*are not identical")
@@ -152,7 +151,8 @@ test_that("format_col_mismatch generates informative errors", {
   expect_match(msg_miss, "Found in 'Test' but missing in 'Ref'.*S3.*Idx 2")
 
   # 2. Wrong Order
-  m_order <- matrix(0, ncol=2); colnames(m_order) <- c("S2", "S1")
+  m_order <- matrix(0, ncol = 2)
+  colnames(m_order) <- c("S2", "S1")
   msg_order <- format_col_mismatch(m_ref, m_order, "Ref", "Test")
 
   expect_match(msg_order, "same sample names, but in a different order")
@@ -164,9 +164,9 @@ test_that("preview_cols aligns and displays columns", {
 
   # Write dummy TSVs
   # File 1: A, B
-  write.table(data.frame(A=1, B=2), f1, sep="\t", row.names=FALSE)
+  write.table(data.frame(A = 1, B = 2), f1, sep = "\t", row.names = FALSE)
   # File 2: A, C, D (Longer, different cols)
-  write.table(data.frame(A=1, C=3, D=4), f2, sep="\t", row.names=FALSE)
+  write.table(data.frame(A = 1, C = 3, D = 4), f2, sep = "\t", row.names = FALSE)
 
   # Capture the invisible return
   # Using capture.output to silence the print during testing

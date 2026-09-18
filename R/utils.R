@@ -184,7 +184,8 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
   }
 
   # 4. Append details
-  msg <- paste0(msg, "If using 'sample_cols', ensure both datasets resolve to the exact same sample set.\nDetails:\n")
+  msg <- paste0(msg, "If using 'sample_cols', ensure both datasets resolve to the exact same sample set.\n",
+                "Details:\n")
 
   if (length(in_x_not_y) > 0) {
     msg <- paste0(msg, sprintf("Found in '%s' but missing in '%s' (%d cols): %s\n",

@@ -149,7 +149,7 @@ dim.coreact_data <- function(x) {
 #'
 #' @return A combined `coreact_data` object.
 #' @export
-cbind.coreact_data <- function(..., deparse.level = 1) {
+cbind.coreact_data <- function(..., deparse.level = 1) { # nolint: object_name_linter. Generic's signature.
   objects <- list(...)
 
   if (length(objects) == 0) return(NULL)

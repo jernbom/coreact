@@ -140,7 +140,7 @@ test_that("worker_chunk_calc returns NULL when nothing passes", {
 
 test_that("worker_chunk_calc computes p-values correctly", {
   # Use Pair 1 (X1-Y1)
-  # q = 2-1 = 1
+  # q is the intersection minus one (1)
   # m = 3 (Size X)
   # n = 4-3 = 1 (Samples - Size X)
   # k = 2 (Size Y)
@@ -188,7 +188,7 @@ test_that("zero-prevalence features give NA ratios and never pass ratio filters"
   expect_equal(res$p_val[1:3], c(1, 1, 1))
 
   # Ratio filters without min_intersection used to fail with
-  # "missing value where TRUE/FALSE needed"
+  # the classic missing-value-where-TRUE/FALSE-needed error
   expect_no_error(r_j <- worker_chunk_calc(1:2, mx, my, px, py, 3, list(min_jaccard = 0.3)))
   expect_equal(nrow(r_j), 1)
   expect_equal(r_j$idx_x, 2)

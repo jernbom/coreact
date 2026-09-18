@@ -1,5 +1,3 @@
-library(testthat)
-library(Matrix)
 
 # --- Helper to create dummy data for tests ---
 create_dummy_data <- function(n_rows = 5, n_cols = 3) {
@@ -64,11 +62,11 @@ test_that("new_coreact_data enforces identical row names", {
 
   # Case 1: Totally different names
   bad_meta <- d$meta
-  rownames(bad_meta) <- paste0("Wrong_", 1:nrow(bad_meta))
+  rownames(bad_meta) <- paste0("Wrong_", seq_len(nrow(bad_meta)))
   expect_error(new_coreact_data(d$mat, bad_meta), "must be identical")
 
   # Case 2: Same names, different order
-  rev_meta <- d$meta[nrow(d$meta):1, ]
+  rev_meta <- d$meta[rev(seq_len(nrow(d$meta))), ]
   expect_error(new_coreact_data(d$mat, rev_meta), "must be identical")
 })
 

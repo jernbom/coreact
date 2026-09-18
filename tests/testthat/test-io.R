@@ -1,5 +1,3 @@
-library(testthat)
-library(Matrix)
 
 # --- Helper to create temp TSV files ---
 write_temp_tsv <- function(df) {

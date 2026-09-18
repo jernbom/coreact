@@ -60,10 +60,14 @@ import_coreact_tsv <- function(path,
   # 2. Resolve Metadata Indices
   if (is.character(meta_cols)) {
     missing <- setdiff(meta_cols, all_cols)
-    if (length(missing) > 0) stop(sprintf("[%s] Metadata columns not found: %s", name, paste(missing, collapse=", ")))
+    if (length(missing) > 0) {
+      stop(sprintf("[%s] Metadata columns not found: %s", name, paste(missing, collapse = ", ")))
+    }
     meta_idx <- match(meta_cols, all_cols)
   } else if (is.numeric(meta_cols)) {
-    if (any(meta_cols > n_total_cols) || any(meta_cols < 1)) stop(sprintf("[%s] Metadata indices out of bounds.", name))
+    if (any(meta_cols > n_total_cols) || any(meta_cols < 1)) {
+      stop(sprintf("[%s] Metadata indices out of bounds.", name))
+    }
     meta_idx <- meta_cols
   } else {
     stop("meta_cols must be a vector of column names or indices.")
@@ -74,10 +78,14 @@ import_coreact_tsv <- function(path,
     # Resolve feature_id to indices
     if (is.character(feature_id)) {
       missing_id <- setdiff(feature_id, all_cols)
-      if (length(missing_id) > 0) stop(sprintf("[%s] Feature ID columns not found: %s", name, paste(missing_id, collapse=", ")))
+      if (length(missing_id) > 0) {
+        stop(sprintf("[%s] Feature ID columns not found: %s", name, paste(missing_id, collapse = ", ")))
+      }
       feat_idx <- match(feature_id, all_cols)
     } else {
-      if (any(feature_id > n_total_cols) || any(feature_id < 1)) stop(sprintf("[%s] Feature ID indices out of bounds.", name))
+      if (any(feature_id > n_total_cols) || any(feature_id < 1)) {
+        stop(sprintf("[%s] Feature ID indices out of bounds.", name))
+      }
       feat_idx <- feature_id
     }
 
@@ -116,7 +124,8 @@ import_coreact_tsv <- function(path,
     if (is.character(sample_cols)) {
       missing_samp <- setdiff(sample_cols, all_cols)
       if (length(missing_samp) > 0) {
-        stop(sprintf("[%s] Sample columns not found: %s", name, paste(head(missing_samp, 5), collapse=", ")))
+        stop(sprintf("[%s] Sample columns not found: %s", name,
+                     paste(head(missing_samp, 5), collapse = ", ")))
       }
       mat_cols_idx <- match(sample_cols, all_cols)
     } else if (is.numeric(sample_cols)) {
