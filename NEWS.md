@@ -23,6 +23,8 @@
 * `cbind()` on `coreact_data` objects refuses to combine objects with
   overlapping sample names.
 * Zero-row `coreact_data` objects (e.g. `obj[integer(0), ]`) are now valid.
+* When X had fewer features than Y (internal swap), the results file had
+  `size_y` before `size_x`; the column order is now always the documented one.
 
 ## Improvements
 
