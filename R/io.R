@@ -18,11 +18,18 @@
 #' @param name String. Identifier for the dataset.
 #' @param n_cores Integer. Number of threads for fast reading.
 #' @param binarize Logical. Should the data matrix be converted to binary?
+#'   If `TRUE`, every value `>= 1` becomes 1 and everything else 0. If `FALSE`
+#'   (default), the sample columns must already contain only 0 and 1.
+#'
+#' @details
+#' Sample columns must be numeric and complete: text columns and missing
+#' values are rejected with an error naming the offending columns (use
+#' [preview_cols()] to inspect headers and choose `meta_cols` /
+#' `sample_cols`). The resulting matrix is always a general sparse
+#' `dgCMatrix`.
 #'
 #' @return A 'coreact_data' object.
 #' @importFrom data.table fread setDF
-#' @importFrom Matrix Matrix
-#' @importFrom methods new
 #' @importFrom utils head
 #' @export
 import_coreact_tsv <- function(path,
@@ -120,18 +127,74 @@ import_coreact_tsv <- function(path,
 
   if (length(mat_cols_idx) == 0) stop(sprintf("[%s] No sample columns selected for matrix.", name))
 
+  if (anyDuplicated(mat_cols_idx)) {
+    stop(sprintf("[%s] Duplicate sample columns requested: %s", name,
+                 paste(unique(all_cols[mat_cols_idx[duplicated(mat_cols_idx)]]), collapse = ", ")))
+  }
+  overlap_cols <- intersect(mat_cols_idx, meta_idx)
+  if (length(overlap_cols) > 0) {
+    stop(sprintf("[%s] Columns cannot be both metadata and sample columns: %s", name,
+                 paste(all_cols[overlap_cols], collapse = ", ")))
+  }
+
+  # Sample columns must be numeric; fread types a column as character/logical
+  # when it contains text, or all-empty fields, respectively.
+  col_is_num <- vapply(dt[mat_cols_idx], is.numeric, logical(1))
+  if (!all(col_is_num)) {
+    bad <- all_cols[mat_cols_idx][!col_is_num]
+    stop(sprintf(
+      "[%s] Sample columns must be numeric (0/1). Non-numeric columns: %s%s",
+      name, paste(head(bad, 5), collapse = ", "),
+      if (length(bad) > 5) sprintf(", ... (+%d more)", length(bad) - 5) else ""
+    ))
+  }
+
   # Create Matrix
   mat_raw <- as.matrix(dt[, mat_cols_idx, drop = FALSE])
   rownames(mat_raw) <- row_names
 
-  if (binarize == TRUE) mat_raw <- +(mat_raw >= 1)
-
   # Cleanup
-  rm(dt); gc()
+  rm(dt)
+
+  n_na <- sum(is.na(mat_raw))
+  if (n_na > 0) {
+    stop(sprintf("[%s] Sample data contains %d missing (NA) values; coreact requires complete 0/1 data.",
+                 name, n_na))
+  }
+
+  if (isTRUE(binarize)) {
+    mat_raw <- +(mat_raw >= 1)
+  } else if (!is_binary_matrix(mat_raw)) {
+    stop(sprintf(paste0("[%s] Sample data must be a binary matrix (0/1), but other values were found. ",
+                        "Use binarize = TRUE to threshold counts at >= 1."), name))
+  }
 
   # 6. Create Sparse Matrix
-  mat_sparse <- Matrix::Matrix(mat_raw, sparse = TRUE)
-  rm(mat_raw); gc()
+  mat_sparse <- as_binary_sparse(mat_raw)
+  rm(mat_raw)
 
   new_coreact_data(mat_sparse, meta_df, name = name)
+}
+
+#' Convert a Dense 0/1 Matrix to dgCMatrix (Internal)
+#'
+#' `Matrix::Matrix(x, sparse = TRUE)` picks a class based on the *shape* of
+#' the data (diagonal, symmetric or triangular square inputs come back as
+#' `ddiMatrix`, `dsCMatrix` or `dtCMatrix`). Building the sparse matrix from
+#' the non-zero positions instead guarantees a general `dgCMatrix`, which is
+#' what the rest of the package assumes, and never materialises anything
+#' larger than the index of non-zero entries.
+#'
+#' @param x A base numeric matrix containing only 0 and 1, with dimnames.
+#' @return A `dgCMatrix` with the same dimensions and dimnames as `x`.
+#' @keywords internal
+as_binary_sparse <- function(x) {
+  nz <- which(x != 0)
+  Matrix::sparseMatrix(
+    i = ((nz - 1L) %% nrow(x)) + 1L,
+    j = ((nz - 1L) %/% nrow(x)) + 1L,
+    x = rep(1, length(nz)),
+    dims = dim(x),
+    dimnames = dimnames(x)
+  )
 }
