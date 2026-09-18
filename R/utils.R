@@ -24,10 +24,14 @@ resolve_xy_args <- function(val, arg_name) {
 #' Automatically detects if the threshold is a percentage (< 1) or absolute count (>= 1).
 #'
 #' @param obj A `coreact_data` object.
-#' @param thresh Numeric. The filter threshold.
+#' @param thresh Numeric. The filter threshold: a fraction of samples if
+#'   `< 1`, an absolute number of samples if `>= 1`. `0` disables the filter.
 #' @return A subsetted `coreact_data` object.
 #' @keywords internal
 filter_by_prevalence <- function(obj, thresh) {
+  if (!is.numeric(thresh) || length(thresh) != 1 || is.na(thresh)) {
+    stop("Prevalence threshold must be a single non-NA number.")
+  }
   if (thresh <= 0) return(obj)
 
   # Determine cutoff: Absolute vs Percentage
@@ -39,13 +43,17 @@ filter_by_prevalence <- function(obj, thresh) {
 
   prev <- Matrix::rowSums(obj$mat > 0)
   keep <- prev >= cutoff
+  n_keep <- sum(keep)
 
-  if (sum(keep) == 0) {
+  if (n_keep == 0) {
     stop(sprintf("Filter removed all features from %s (Cutoff: %s).", obj$name, cutoff))
   }
 
+  message(sprintf("[%s] Prevalence filter (>= %s samples): keeping %d of %d features.",
+                  obj$name, format(cutoff), n_keep, length(keep)))
+
   # Uses the S3 subsetting method '[.coreact_data' defined in class_coreact.R
-  return(obj[keep, ])
+  obj[keep, ]
 }
 
 #' Write Sidecar Metadata (Internal)
@@ -61,10 +69,10 @@ filter_by_prevalence <- function(obj, thresh) {
 #' @keywords internal
 write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
   # Construct filename: results.tsv -> results_metadata_x.tsv
-  # This regex inserts the suffix before the last extension
-  if (grepl("\\.", basename(out_path))) {
+  ext <- tools::file_ext(out_path)
+  if (nzchar(ext)) {
     # If extension exists, insert suffix before it
-    meta_file <- sub("(\\.[^.]+)$", sprintf("_metadata_%s\\1", suffix), out_path)
+    meta_file <- sprintf("%s_metadata_%s.%s", tools::file_path_sans_ext(out_path), suffix, ext)
   } else {
     # If no extension, append suffix + .tsv default
     meta_file <- sprintf("%s_metadata_%s.tsv", out_path, suffix)
