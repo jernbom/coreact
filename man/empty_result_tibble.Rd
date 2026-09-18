@@ -11,7 +11,7 @@ A zero-row tibble.
 }
 \description{
 The zero-row tibble returned by \code{\link[=run_coreact]{run_coreact()}} when no pair passes the
-structural filters or when an input has no features. Column names and
-types match a non-empty result.
+filters or when an input has no features. Column names and types match a
+non-empty result.
 }
 \keyword{internal}

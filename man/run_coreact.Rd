@@ -9,7 +9,8 @@ run_coreact(
   data_y,
   n_cores = 1,
   chunk_size = NULL,
-  filter_config = list(min_intersection = 1)
+  effect_filters = list(),
+  max_p_val = NULL
 )
 }
 \arguments{
@@ -24,25 +25,32 @@ the computation falls back to serial with a warning.}
 \item{chunk_size}{Integer or \code{NULL}. Number of X features per work chunk.
 Auto-calculated from the data size and \code{n_cores} if \code{NULL}.}
 
-\item{filter_config}{Named list of structural filters applied before
-results are collected. Recognised entries: \code{min_intersection} (minimum
-number of shared samples), \code{min_jaccard}, \code{min_overlap}. Omit an entry to
-disable that filter; \code{list()} keeps every pair.}
+\item{effect_filters}{Named list of minimum effect sizes. Recognised
+entries: \code{min_intersection} (minimum number of shared samples),
+\code{min_jaccard}, \code{min_overlap}. A missing entry or \code{0} disables that
+filter; the default \code{list()} keeps every pair.}
+
+\item{max_p_val}{Numeric or \code{NULL}. Pairs with a raw p-value above this
+are not returned. Set it to the FDR threshold you intend to apply after
+\code{\link[=adjust_fdr]{adjust_fdr()}}: since an adjusted p-value is never below the raw one,
+the set of significant pairs is unchanged and memory is saved.}
 }
 \value{
-A tibble with one row per pair passing \code{filter_config} and columns
-\code{feature_x}, \code{feature_y}, \code{idx_x}, \code{idx_y}, \code{intersection}, \code{size_x},
-\code{size_y}, \code{union}, \code{jaccard}, \code{overlap}, \code{p_val}. \verb{idx_*} are row indices
-into the corresponding input object. No multiple-testing adjustment is
-applied; see \code{\link[=coreact_pipeline]{coreact_pipeline()}} or \code{\link[stats:p.adjust]{stats::p.adjust()}}.
+A tibble with one row per pair passing \code{effect_filters} and
+\code{max_p_val}, with columns \code{feature_x}, \code{feature_y}, \code{idx_x}, \code{idx_y},
+\code{intersection}, \code{size_x}, \code{size_y}, \code{union}, \code{jaccard}, \code{overlap},
+\code{p_val}. \verb{idx_*} are row indices into the corresponding input object.
+The attribute \code{n_pairs} holds the number of tested pairs
+(\code{nrow(data_x) * nrow(data_y)}), which \code{\link[=adjust_fdr]{adjust_fdr()}} uses as the size
+of the family. No multiple-testing adjustment is applied here.
 }
 \description{
 The computational core of the package: computes co-occurrence statistics
 for every pair of features between two \code{coreact_data} objects that share
 the same samples. \code{\link[=coreact_pipeline]{coreact_pipeline()}} wraps this with file import,
-prevalence filtering, FDR adjustment and export; call \code{run_coreact()}
-directly when the data are already in memory or when you want the
-unadjusted results as a tibble.
+feature selection, FDR adjustment and export; call \code{run_coreact()}
+directly when the data are already in memory, then \code{\link[=adjust_fdr]{adjust_fdr()}} to add
+adjusted p-values.
 }
 \details{
 For every pair \verb{(x, y)} the following are reported: \code{intersection}
@@ -66,6 +74,8 @@ x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name =
 y <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = c("protein_id", "gene_name"),
                         name = "Y")
 
-res <- run_coreact(x, y, filter_config = list(min_intersection = 2))
-head(res)
+res <- run_coreact(x, y)
+attr(res, "n_pairs")
+res <- adjust_fdr(res)
+head(res[order(res$p_adj), ])
 }

@@ -2,21 +2,24 @@
 % Please edit documentation in R/utils.R
 \name{filter_by_prevalence}
 \alias{filter_by_prevalence}
-\title{Filter Coreact Data by Prevalence (Internal)}
+\title{Filter Coreact Data by Marginal Prevalence (Internal)}
 \usage{
-filter_by_prevalence(obj, thresh)
+filter_by_prevalence(obj, min_thresh = 0, max_thresh = NULL)
 }
 \arguments{
 \item{obj}{A \code{coreact_data} object.}
 
-\item{thresh}{Numeric. The filter threshold: a fraction of samples if
-\verb{< 1}, an absolute number of samples if \verb{>= 1}. \code{0} disables the filter.}
+\item{min_thresh}{Numeric. Minimum prevalence; \code{0} disables the lower bound.}
+
+\item{max_thresh}{Numeric or \code{NULL}. Maximum prevalence; \code{NULL} disables
+the upper bound.}
 }
 \value{
 A subsetted \code{coreact_data} object.
 }
 \description{
-Filters a coreact_data object based on row prevalence.
-Automatically detects if the threshold is a percentage (< 1) or absolute count (>= 1).
+Retains the features of a coreact_data object whose prevalence (number of
+positive samples) lies within \verb{[min_thresh, max_thresh]}. Each threshold is
+a fraction of the samples if \verb{< 1} and an absolute count if \verb{>= 1}.
 }
 \keyword{internal}

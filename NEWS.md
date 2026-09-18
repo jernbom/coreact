@@ -1,5 +1,22 @@
 # coreact (development version)
 
+## Procedure
+
+* `coreact_pipeline()` is now explicitly structured as three steps: feature
+  selection on marginal prevalence (`min_prevalence` and the new
+  `max_prevalence`), significance testing of every pair of retained features
+  with Benjamini-Hochberg adjustment over all `n_x * n_y` pairs and filtering
+  on `fdr_threshold`, and effect-size filtering of the significant pairs with
+  `effect_filters` (renamed from `filter_config`; entries `min_intersection`,
+  `min_jaccard`, `min_overlap`). The effect-size filters now default to none.
+* Pairs that cannot end up in the output are pruned inside the engine (raw
+  p-value above `fdr_threshold`, effect size below threshold), so memory and
+  disk usage scale with the number of reported pairs while the result is
+  identical to computing all pairs.
+* `run_coreact()` gains `max_p_val` and records the number of tested pairs in
+  the `n_pairs` attribute of its result; the new `adjust_fdr()` adds `p_adj`
+  over that family for in-memory use.
+
 ## Bug fixes
 
 * `coreact_pipeline()` argument validation used `&&` where `||` was intended,

@@ -15,7 +15,7 @@ test_that("run_coreact computes results correctly", {
   colnames(m_y) <- c("S1", "S2")
   o_y <- new_coreact_data(m_y, data.frame(id = c("Y1", "Y2"), row.names = c("Y1", "Y2")))
 
-  res <- run_coreact(o_x, o_y, filter_config = list(min_intersection = 1))
+  res <- run_coreact(o_x, o_y, effect_filters = list(min_intersection = 1))
 
   expect_s3_class(res, "tbl_df")
   expect_equal(nrow(res), 2)
@@ -23,6 +23,7 @@ test_that("run_coreact computes results correctly", {
   expect_true("Y1" %in% res$feature_y)
   expect_equal(res$jaccard, c(1, 1))
   expect_named(res, names(empty_result_tibble()))
+  expect_equal(attr(res, "n_pairs"), 4)
 })
 
 test_that("run_coreact matches the brute-force reference (all pairs)", {
@@ -30,7 +31,7 @@ test_that("run_coreact matches the brute-force reference (all pairs)", {
   o_x <- make_obj(30, 12, "X", density = 0.4)
   o_y <- make_obj(8, 12, "Y", density = 0.6)
 
-  res <- run_coreact(o_x, o_y, filter_config = list())
+  res <- run_coreact(o_x, o_y, effect_filters = list())
   ref <- brute_force_coreact(o_x$mat, o_y$mat)
 
   expect_equal(nrow(res), nrow(o_x) * nrow(o_y))
@@ -52,7 +53,7 @@ test_that("run_coreact handles swap optimization correctly", {
 
   # Expect message about swapping because nrow(X) < nrow(Y)
   expect_message(
-    res <- run_coreact(o_x, o_y, filter_config = list(min_intersection = 0)),
+    res <- run_coreact(o_x, o_y, effect_filters = list(min_intersection = 0)),
     "Swapping X and Y"
   )
 
@@ -75,8 +76,8 @@ test_that("run_coreact(x, y) and run_coreact(y, x) agree after relabelling", {
   o_b <- make_obj(6, 10, "B", density = 0.5)
 
   suppressMessages({
-    r_ab <- run_coreact(o_a, o_b, filter_config = list(min_intersection = 1))
-    r_ba <- run_coreact(o_b, o_a, filter_config = list(min_intersection = 1))
+    r_ab <- run_coreact(o_a, o_b, effect_filters = list(min_intersection = 1))
+    r_ba <- run_coreact(o_b, o_a, effect_filters = list(min_intersection = 1))
   })
 
   # Relabel r_ba so that x refers to A and y to B
@@ -95,10 +96,10 @@ test_that("run_coreact respects chunk_size and results are chunking-invariant", 
   o_y <- make_obj(50, 5, "Y")
 
   suppressMessages({
-    res_10 <- run_coreact(o_x, o_y, chunk_size = 10, filter_config = list(min_intersection = 0))
-    res_1 <- run_coreact(o_x, o_y, chunk_size = 1, filter_config = list(min_intersection = 0))
-    res_7 <- run_coreact(o_x, o_y, chunk_size = 7, filter_config = list(min_intersection = 0))
-    res_auto <- run_coreact(o_x, o_y, chunk_size = NULL, filter_config = list(min_intersection = 0))
+    res_10 <- run_coreact(o_x, o_y, chunk_size = 10, effect_filters = list(min_intersection = 0))
+    res_1 <- run_coreact(o_x, o_y, chunk_size = 1, effect_filters = list(min_intersection = 0))
+    res_7 <- run_coreact(o_x, o_y, chunk_size = 7, effect_filters = list(min_intersection = 0))
+    res_auto <- run_coreact(o_x, o_y, chunk_size = NULL, effect_filters = list(min_intersection = 0))
   })
 
   expect_equal(nrow(res_10), 2500)
@@ -116,9 +117,9 @@ test_that("run_coreact parallel execution matches serial", {
 
   suppressMessages({
     res_serial <- run_coreact(o_x, o_y, n_cores = 1, chunk_size = 25,
-                              filter_config = list(min_intersection = 1))
+                              effect_filters = list(min_intersection = 1))
     res_par <- run_coreact(o_x, o_y, n_cores = 2, chunk_size = 25,
-                           filter_config = list(min_intersection = 1))
+                           effect_filters = list(min_intersection = 1))
   })
 
   expect_gt(nrow(res_serial), 0)
@@ -131,7 +132,7 @@ test_that("run_coreact on Windows falls back to serial with a warning", {
   o_x <- make_obj(10, 5, "X")
   o_y <- make_obj(10, 5, "Y")
   expect_warning(
-    suppressMessages(run_coreact(o_x, o_y, n_cores = 2, filter_config = list())),
+    suppressMessages(run_coreact(o_x, o_y, n_cores = 2, effect_filters = list())),
     "Running serially"
   )
 })
@@ -141,16 +142,18 @@ test_that("run_coreact returns the empty schema when nothing passes or inputs ar
   o_x <- make_obj(10, 5, "X")
   o_y <- make_obj(10, 5, "Y")
 
-  suppressMessages(res <- run_coreact(o_x, o_y, filter_config = list(min_intersection = 100)))
+  suppressMessages(res <- run_coreact(o_x, o_y, effect_filters = list(min_intersection = 100)))
   expect_equal(nrow(res), 0)
   expect_named(res, names(empty_result_tibble()))
+  expect_equal(attr(res, "n_pairs"), 100)
+  expect_equal(nrow(adjust_fdr(res)), 0)
   expect_type(res$feature_x, "character")
   expect_type(res$p_val, "double")
 
   # Zero-feature input (e.g. everything filtered upstream) -> empty schema, no error
   o_empty <- o_x[integer(0), ]
   expect_equal(nrow(o_empty), 0)
-  suppressMessages(res_e <- run_coreact(o_empty, o_y, filter_config = list()))
+  suppressMessages(res_e <- run_coreact(o_empty, o_y, effect_filters = list()))
   expect_equal(nrow(res_e), 0)
   expect_named(res_e, names(empty_result_tibble()))
 })
@@ -167,15 +170,17 @@ test_that("run_coreact validates its inputs", {
   expect_error(suppressMessages(run_coreact(o_x, o_y, chunk_size = -5)), "chunk_size")
   expect_error(suppressMessages(run_coreact(o_x, o_y, chunk_size = c(1, 2))), "chunk_size")
   expect_error(suppressMessages(run_coreact(o_x, o_y, n_cores = 0)), "n_cores")
+  expect_error(suppressMessages(run_coreact(o_x, o_y, max_p_val = 2)), "max_p_val")
+  expect_error(suppressMessages(run_coreact(o_x, o_y, max_p_val = -0.1)), "max_p_val")
 
   # Misspelt filter names used to be silently ignored
-  expect_error(run_coreact(o_x, o_y, filter_config = list(min_intersect = 2)), "Unknown 'filter_config'")
-  expect_error(run_coreact(o_x, o_y, filter_config = list(2)), "must be named")
-  expect_error(run_coreact(o_x, o_y, filter_config = list(min_jaccard = -1)), "non-negative")
-  expect_error(run_coreact(o_x, o_y, filter_config = list(min_jaccard = "a")), "non-negative")
-  expect_error(run_coreact(o_x, o_y, filter_config = "min_intersection"), "named list")
-  expect_no_error(validate_filter_config(NULL))
-  expect_no_error(validate_filter_config(list()))
+  expect_error(run_coreact(o_x, o_y, effect_filters = list(min_intersect = 2)), "Unknown 'effect_filters'")
+  expect_error(run_coreact(o_x, o_y, effect_filters = list(2)), "must be named")
+  expect_error(run_coreact(o_x, o_y, effect_filters = list(min_jaccard = -1)), "non-negative")
+  expect_error(run_coreact(o_x, o_y, effect_filters = list(min_jaccard = "a")), "non-negative")
+  expect_error(run_coreact(o_x, o_y, effect_filters = "min_intersection"), "named list")
+  expect_no_error(validate_effect_filters(NULL))
+  expect_no_error(validate_effect_filters(list()))
 })
 
 test_that("run_coreact refuses mismatched or reordered samples", {
@@ -186,23 +191,23 @@ test_that("run_coreact refuses mismatched or reordered samples", {
   # Same names, different order
   o_y_rev <- o_y
   colnames(o_y_rev$mat) <- rev(colnames(o_y_rev$mat))
-  expect_error(run_coreact(o_x, o_y_rev, filter_config = list()), "different order")
+  expect_error(run_coreact(o_x, o_y_rev, effect_filters = list()), "different order")
 
   # Different sample sets
   o_y_other <- o_y
   colnames(o_y_other$mat) <- paste0("T", 1:5)
-  expect_error(run_coreact(o_x, o_y_other, filter_config = list()), "not identical")
+  expect_error(run_coreact(o_x, o_y_other, effect_filters = list()), "not identical")
 
   # Different number of samples
   o_y_short <- o_y[, 1:3]
-  expect_error(run_coreact(o_x, o_y_short, filter_config = list()), "not identical")
+  expect_error(run_coreact(o_x, o_y_short, effect_filters = list()), "not identical")
 
   # Unnamed samples: only the count can be checked
   o_x_nn <- o_x
   o_y_nn <- o_y_short
   colnames(o_x_nn$mat) <- NULL
   colnames(o_y_nn$mat) <- NULL
-  expect_error(run_coreact(o_x_nn, o_y_nn, filter_config = list()), "Sample count differs")
+  expect_error(run_coreact(o_x_nn, o_y_nn, effect_filters = list()), "Sample count differs")
 })
 
 # --- Tests for coreact_pipeline (The Full Workflow) ---
@@ -221,7 +226,7 @@ test_that("coreact_pipeline runs end-to-end and returns what it wrote", {
       names = c("DataX", "DataY"),
       meta_cols = c("FeatureID", "Desc"),
       feature_ids = "FeatureID",
-      filter_config = list(min_intersection = 1),
+      effect_filters = list(min_intersection = 1),
       fdr_threshold = 1.0 # Keep everything for test
     ),
     "Pipeline completed successfully"
@@ -237,7 +242,8 @@ test_that("coreact_pipeline runs end-to-end and returns what it wrote", {
   expect_equal(nrow(res), nrow(on_disk))
   expect_equal(names(res), names(on_disk))
   expect_equal(res$p_adj, on_disk$p_adj)
-  expect_equal(res$p_adj, stats::p.adjust(res$p_val, method = "BH"))
+  # BH over every pair of retained features (10 x 10), not only the reported ones
+  expect_equal(res$p_adj, stats::p.adjust(res$p_val, method = "BH", n = 100))
 
   # Check Sidecar Metadata
   side_x <- file.path(tmp, "final_results_metadata_x.tsv")
@@ -349,8 +355,12 @@ test_that("coreact_pipeline validates arguments before reading files", {
   expect_error(coreact_pipeline(paths = ok, out_path = out, min_prevalence = NA), "'min_prevalence'")
   expect_error(coreact_pipeline(paths = ok, out_path = out, min_prevalence = 1:3), "'min_prevalence'")
   expect_error(coreact_pipeline(paths = ok, out_path = out, meta_cols = list(1, 2, 3)), "'meta_cols'")
+  expect_error(coreact_pipeline(paths = ok, out_path = out, max_prevalence = "a"), "'max_prevalence'")
+  expect_error(coreact_pipeline(paths = ok, out_path = out, max_prevalence = 1:3), "'max_prevalence'")
+  expect_error(coreact_pipeline(paths = ok, out_path = out, fdr_threshold = 1.5), "'fdr_threshold'")
+  expect_error(coreact_pipeline(paths = ok, out_path = out, fdr_threshold = c(0.1, 0.2)), "'fdr_threshold'")
   expect_error(coreact_pipeline(paths = ok, out_path = out,
-                                filter_config = list(min_intersect = 1)), "Unknown 'filter_config'")
+                                effect_filters = list(min_intersect = 1)), "Unknown 'effect_filters'")
   # Only after all of the above does the file check run
   expect_error(coreact_pipeline(paths = ok, out_path = out), "File not found")
 })
@@ -375,7 +385,7 @@ test_that("coreact_pipeline handles empty results gracefully", {
       out_path = out_empty,
       meta_cols = 1, feature_ids = 1,
       min_prevalence = 0,
-      filter_config = list(min_intersection = 1)
+      effect_filters = list(min_intersection = 1)
     ),
     "No significant results found"
   )
@@ -406,4 +416,96 @@ test_that("coreact_pipeline creates missing output directories", {
   ))
   expect_true(file.exists(out_path))
   expect_true(file.exists(file.path(tmp, "nested", "deeper", "res_metadata_y.tsv")))
+})
+
+# --- The three-step procedure: pruning in the engine must be exact ---
+
+test_that("engine pruning reproduces the full computation exactly", {
+  withr::local_seed(2025)
+  # Sparse data with planted co-occurrence, so that some pairs are significant
+  # while most have p = 1 and are pruned
+  m <- make_signal_matrices(80, 30, 40)
+  o_x <- new_coreact_data(m$x, data.frame(row.names = rownames(m$x)), name = "X")
+  o_y <- new_coreact_data(m$y, data.frame(row.names = rownames(m$y)), name = "Y")
+  thr <- 0.2
+  eff <- list(min_intersection = 2, min_overlap = 0.3)
+
+  suppressMessages({
+    # Reference: every pair, adjusted over the full family, then filtered
+    full <- adjust_fdr(run_coreact(o_x, o_y))
+    expect_equal(nrow(full), 80 * 30)
+    expect_equal(attr(full, "n_pairs"), 80 * 30)
+    ref <- full[full$p_adj <= thr, ]
+    ref <- ref[ref$intersection >= eff$min_intersection & ref$overlap >= eff$min_overlap, ]
+
+    # Pruned: p ceiling and effect filters inside the engine, same family size
+    pruned <- adjust_fdr(run_coreact(o_x, o_y, effect_filters = eff, max_p_val = thr))
+    expect_lt(nrow(pruned), nrow(full))
+    got <- pruned[pruned$p_adj <= thr, ]
+  })
+
+  expect_gt(nrow(ref), 0)
+  expect_equal(sort_results(as.data.frame(got)), sort_results(as.data.frame(ref)))
+
+  # Reported adjusted p-values are those of the full computation
+  key <- function(d) paste(d$feature_x, d$feature_y)
+  expect_equal(got$p_adj[order(key(got))], ref$p_adj[order(key(ref))])
+})
+
+test_that("coreact_pipeline output equals full computation followed by FDR and effect filters", {
+  withr::local_seed(31)
+  tmp <- withr::local_tempdir()
+  m <- make_signal_matrices(40, 25, 30, density = 0.3)
+  path_x <- write_matrix_tsv(m$x, dir = tmp)
+  path_y <- write_matrix_tsv(m$y, dir = tmp)
+
+  suppressMessages(suppressWarnings(
+    piped <- coreact_pipeline(
+      paths = c(path_x, path_y), out_path = file.path(tmp, "p.tsv"),
+      meta_cols = 1:2, feature_ids = 1,
+      min_prevalence = c(5, 5), max_prevalence = c(0.8, 25),
+      fdr_threshold = 0.3, effect_filters = list(min_jaccard = 0.2)
+    )
+  ))
+
+  # Rebuild by hand
+  ox <- import_coreact_tsv(path_x, meta_cols = 1:2, feature_id = 1, name = "X")
+  oy <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = 1, name = "Y")
+  suppressMessages({
+    ox <- filter_by_prevalence(ox, 5, 0.8)
+    oy <- filter_by_prevalence(oy, 5, 25)
+    full <- adjust_fdr(run_coreact(ox, oy))
+  })
+  expect_equal(attr(full, "n_pairs"), nrow(ox) * nrow(oy))
+  ref <- full[full$p_adj <= 0.3, ]
+  ref <- ref[!is.na(ref$jaccard) & ref$jaccard >= 0.2, ]
+
+  expect_gt(nrow(ref), 0)
+  expect_equal(sort_results(as.data.frame(piped)), sort_results(as.data.frame(ref)))
+})
+
+test_that("fdr_threshold = NULL returns every pair with full-family p_adj", {
+  withr::local_seed(32)
+  tmp <- withr::local_tempdir()
+  path_x <- write_pipeline_tsv(8, 6, "X", dir = tmp)
+  path_y <- write_pipeline_tsv(5, 6, "Y", dir = tmp)
+  suppressMessages(suppressWarnings(
+    res <- coreact_pipeline(paths = c(path_x, path_y), out_path = file.path(tmp, "all.tsv"),
+                            meta_cols = 1:2, feature_ids = 1, fdr_threshold = NULL)
+  ))
+  expect_equal(nrow(res), 40)
+  expect_equal(res$p_adj, p.adjust(res$p_val, "BH"))
+})
+
+test_that("adjust_fdr uses the family size and validates its input", {
+  res <- tibble::tibble(p_val = c(0.001, 0.02, 0.5))
+  expect_error(adjust_fdr(res), "n_pairs")
+  expect_equal(adjust_fdr(res, n_pairs = 10)$p_adj, p.adjust(res$p_val, "BH", n = 10))
+  expect_equal(adjust_fdr(res, n_pairs = 3, method = "bonferroni")$p_adj,
+               p.adjust(res$p_val, "bonferroni", n = 3))
+  expect_error(adjust_fdr(res, n_pairs = 2), "no smaller than")
+  expect_error(adjust_fdr(data.frame(x = 1)), "p_val")
+
+  attr(res, "n_pairs") <- 6
+  expect_equal(adjust_fdr(res)$p_adj, p.adjust(res$p_val, "BH", n = 6))
 })

@@ -9,8 +9,8 @@ It addresses the dimensionality problem where both feature sets are large. By ut
 
 * **Chunked Matrix Engine:** Intersections for a block of X features against all of Y are computed in one sparse cross-product; the secondary matrices (Jaccard, overlap) are only materialised when they are needed for filtering, and the final statistics are computed vectorised on the surviving pairs.
 * **Memory Efficiency:** Built on the `Matrix` package for sparse data handling. Uses **Fork-based parallelization** (Copy-On-Write) on Linux/macOS systems to share memory across workers without duplication. On Windows the computation runs serially.
-* **Disc-to-Disc Pipeline:** A single wrapper function handles data loading, prevalence filtering, computation, FDR correction, and result export. The engine (`run_coreact()`) is also available for objects already in memory.
-* **Statistical Rigor:** Computes one-tailed Hypergeometric P-values (enrichment) and supports standard FDR (Benjamini-Hochberg) correction.
+* **Disc-to-Disc Pipeline:** A single wrapper function handles data loading, feature selection, computation, FDR correction, effect-size filtering and result export. The engine (`run_coreact()`) is also available for objects already in memory.
+* **Statistical Rigor:** Computes one-tailed Hypergeometric P-values (enrichment) for every pair of retained features and controls the FDR over that full family with the Benjamini-Hochberg procedure; pairs that cannot reach significance are discarded inside the engine before they take up memory.
 
 ## 📦 Installation
 
@@ -56,17 +56,17 @@ coreact_pipeline(
     c("protein_id", "gene_name")   # Unique ID for Y
   ),
   
-  # Prevalence Filter (Important for speed/noise reduction)
+  # Step 1: Feature selection on marginal prevalence
+  # (fraction of samples if < 1, absolute count if >= 1; max_prevalence is optional)
   min_prevalence = c(0.1, 2), # 10% prevalence in X, N>=2 in Y
   
-  # Structural Filters
-  # Only keep pairs with at least 1 shared sample and at least 50% overlap
-  filter_config = list(min_intersection = 1, min_overlap = 0.5),
-  
-  # Statistical Filter
+  # Step 2: Significance filter (BH-adjusted p-value over all retained feature pairs)
   # For the purpose of this example, keep all hits regardless of significance.
   # NB! I strongly recommend lowering this threshold to, e.g., 0.05 for an actual use case!
   fdr_threshold = 1,
+  
+  # Step 3: Effect-size filters on the significant pairs (none by default)
+  effect_filters = list(min_overlap = 0.5),
   
   # HPC Configuration. Use 1 if running on a Windows machine or running interactively in RStudio.
   n_cores = 1
@@ -84,9 +84,12 @@ If the data are already loaded, or you want the unadjusted statistics as a tibbl
 x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
 y <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = c("protein_id", "gene_name"), name = "Y")
 
-res <- run_coreact(x, y, filter_config = list(min_intersection = 2))
-res$p_adj <- p.adjust(res$p_val, method = "BH")
+res <- run_coreact(x, y)           # every pair; add max_p_val = 0.05 to prune on raw p
+res <- adjust_fdr(res)             # BH over attr(res, "n_pairs") = nrow(x) * nrow(y) tests
+sig <- res[res$p_adj <= 0.05, ]
 ```
+
+`adjust_fdr()` uses the number of tested pairs as the size of the family, so pruning inside the engine (`max_p_val`, `effect_filters`) never changes the adjusted p-values of the significant pairs.
 
 `preview_cols(path_x, path_y)` prints the column headers of both files side by side, which helps when choosing `meta_cols`, `sample_cols` and `feature_ids` by index.
 
@@ -121,12 +124,12 @@ The pipeline produces tab-separated files. Below is a preview of the main result
 
 | feature_x | feature_y | idx_x | idx_y | intersection | size_x | size_y | union | jaccard | overlap | p_val | p_adj |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PEP_1001 | PROT_1\|GENE_A | 1 | 1 | 1 | 1 | 5 | 5 | 0.200 | 1.000 | 0.500 | 0.829 |
-| PEP_1002 | PROT_1\|GENE_A | 2 | 1 | 2 | 3 | 5 | 6 | 0.333 | 0.667 | 0.500 | 0.829 |
-| PEP_1003 | PROT_1\|GENE_A | 3 | 1 | 1 | 2 | 5 | 6 | 0.167 | 0.500 | 0.778 | 0.829 |
-| PEP_1004 | PROT_1\|GENE_A | 4 | 1 | 2 | 2 | 5 | 5 | 0.400 | 1.000 | 0.222 | 0.829 |
+| PEP_1001 | PROT_1\|GENE_A | 1 | 1 | 1 | 1 | 5 | 5 | 0.200 | 1.000 | 0.500 | 1.000 |
+| PEP_1002 | PROT_1\|GENE_A | 2 | 1 | 2 | 3 | 5 | 6 | 0.333 | 0.667 | 0.500 | 1.000 |
+| PEP_1003 | PROT_1\|GENE_A | 3 | 1 | 1 | 2 | 5 | 6 | 0.167 | 0.500 | 0.778 | 1.000 |
+| PEP_1004 | PROT_1\|GENE_A | 4 | 1 | 2 | 2 | 5 | 5 | 0.400 | 1.000 | 0.222 | 1.000 |
 
-`idx_x` / `idx_y` are the row numbers of the features in the (prevalence-filtered) X and Y inputs. `jaccard` and `overlap` are `NA` when their denominator is zero, i.e. for features that are absent from every sample; such pairs only appear in the output if `min_intersection` is set to 0.
+`idx_x` / `idx_y` are the row numbers of the features in the (prevalence-filtered) X and Y inputs. `jaccard` and `overlap` are `NA` when their denominator is zero, i.e. for features that are absent from every sample. (With ten samples and `fdr_threshold = 1`, nothing in the toy data reaches significance, hence `p_adj` of 1.)
 
 
 Corresponding metadata is saved in sidecar files (linked by `feature_x` / `feature_y`):
@@ -143,6 +146,14 @@ Corresponding metadata is saved in sidecar files (linked by `feature_x` / `featu
 
 ## 📐 Methodology
 
+The pipeline runs three steps in a fixed order:
+
+1. **Feature selection.** Features are retained by their marginal prevalence (`min_prevalence`, `max_prevalence`). The hypergeometric test conditions on the prevalences, so selecting on them leaves the p-values of the retained pairs valid.
+2. **Significance testing.** Every pair of retained features is tested, the p-values are adjusted over all $n_X \times n_Y$ pairs, and pairs with `p_adj <= fdr_threshold` are kept.
+3. **Effect-size filtering.** The significant pairs are filtered by `effect_filters` (`min_intersection`, `min_jaccard`, `min_overlap`; none by default). With a moderate `fdr_threshold` these are mostly a convenience for keeping output sizes manageable.
+
+Steps 2 and 3 are executed inside the engine so that pairs which cannot appear in the output are never materialised (a raw p-value above `fdr_threshold` cannot become significant after adjustment, and the effect-size thresholds commute with the FDR filter); the result is identical to computing all pairs first.
+
 For every pair of features $(A, B)$:
 
 1. **Intersection ($A \cap B$):** Number of samples where both features are present.
@@ -156,7 +167,7 @@ For every pair of features $(A, B)$:
 * $m = |A|$ (Prevalence of Feature A)
 * $n = N_{samples} - |A|$
 * $k = |B|$ (Prevalence of Feature B)
-6. **FDR (`p_adj`):** Benjamini-Hochberg adjustment (`p.adjust(method = "BH")`) over the pairs that survive `filter_config`. With the default `min_intersection = 1` this is the set of pairs sharing at least one sample; use `filter_config = list(min_intersection = 0)` to adjust over all pairs instead.
+6. **FDR (`p_adj`):** Benjamini-Hochberg adjustment (`p.adjust(method = "BH", n = n_X * n_Y)`) over all pairs of retained features.
 
 ## 🛠️ Development
 

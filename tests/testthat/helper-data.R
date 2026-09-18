@@ -80,3 +80,25 @@ sort_results <- function(res) {
   rownames(res) <- NULL
   res
 }
+
+# Random binary X plus a Y whose rows are noisy copies of X rows, so that
+# genuine co-occurrence exists. Returns base matrices with dimnames.
+make_signal_matrices <- function(n_x, n_y, n_samples, density = 0.15, flip = 0.1) {
+  mx <- matrix(rbinom(n_x * n_samples, 1, density), n_x, n_samples)
+  src <- sample(n_x, n_y, replace = TRUE)
+  my <- mx[src, , drop = FALSE]
+  noise <- matrix(rbinom(n_y * n_samples, 1, flip), n_y, n_samples)
+  my <- (my + noise) %% 2
+  dimnames(mx) <- list(paste0("X", seq_len(n_x)), paste0("S", seq_len(n_samples)))
+  dimnames(my) <- list(paste0("Y", seq_len(n_y)), paste0("S", seq_len(n_samples)))
+  list(x = mx, y = my)
+}
+
+# Write a base binary matrix as a pipeline-style TSV (FeatureID, Desc, samples).
+write_matrix_tsv <- function(mat, dir = tempdir()) {
+  df <- data.frame(FeatureID = rownames(mat), Desc = paste0("Desc_", rownames(mat)),
+                   as.data.frame(mat), check.names = FALSE, stringsAsFactors = FALSE)
+  tmp <- tempfile(fileext = ".tsv", tmpdir = dir)
+  write.table(df, file = tmp, sep = "\t", row.names = FALSE, quote = FALSE)
+  tmp
+}

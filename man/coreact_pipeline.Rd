@@ -14,8 +14,9 @@ coreact_pipeline(
   feature_id_sep = "|",
   binarize = FALSE,
   min_prevalence = 0,
-  filter_config = list(min_intersection = 1),
+  max_prevalence = NULL,
   fdr_threshold = 0.05,
+  effect_filters = list(),
   n_cores = 1,
   chunk_size = NULL
 )
@@ -37,20 +38,31 @@ If a vector, applied to both X and Y.
 If a list of length 2, \code{sample_cols[[1]]} is used for X, \code{sample_cols[[2]]} for Y.
 If \code{NULL}, all columns not defined in \code{meta_cols} are used as sample columns.}
 
-\item{feature_ids}{List or Vector. Names or indices of columns for constructing unique Feature IDs. If \code{NULL}, row numbers are used.
+\item{feature_ids}{List or Vector. Names or indices of columns for constructing unique
+Feature IDs. If \code{NULL}, row numbers are used.
 If a vector, applied to both X and Y.
 If a list of length 2, \code{feature_ids[[1]]} is used for X, \code{feature_ids[[2]]} for Y.}
 
 \item{feature_id_sep}{String. Separator for Feature IDs.}
 
-\item{binarize}{Logical vector (length 1 or 2). Should the input data matrices (non-meta columns) be converted to binary?}
+\item{binarize}{Logical vector (length 1 or 2). Should the input data matrices (non-meta
+columns) be converted to binary?}
 
-\item{min_prevalence}{Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
-to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.}
+\item{min_prevalence}{Numeric vector (length 1 or 2). Minimum prevalence (number of
+positive samples) to retain a feature. If < 1, treated as a fraction of the samples.
+If >= 1, treated as an absolute count. \code{0} disables the filter.}
 
-\item{filter_config}{List of structural filters (e.g., \code{min_intersection}).}
+\item{max_prevalence}{Numeric vector (length 1 or 2) or \code{NULL}. Maximum prevalence to
+retain a feature, with the same fraction/count convention as \code{min_prevalence}.
+\code{NULL} (default) disables the filter.}
 
-\item{fdr_threshold}{Numeric. Max FDR to retain (default 0.05). If \code{NULL}, no filtering.}
+\item{fdr_threshold}{Numeric. Maximum Benjamini-Hochberg adjusted p-value to retain
+(default 0.05). If \code{NULL}, every pair is retained and only the effect-size
+filters apply; note that this returns all \code{n_x * n_y} pairs.}
+
+\item{effect_filters}{Named list of minimum effect sizes applied to the significant
+pairs. Recognised entries: \code{min_intersection}, \code{min_jaccard}, \code{min_overlap}.
+The default applies no effect-size filter.}
 
 \item{n_cores}{Integer. Number of cores.}
 
@@ -63,17 +75,35 @@ main results table at \code{out_path} and two metadata sidecars
 (\verb{*_metadata_x.tsv}, \verb{*_metadata_y.tsv}) next to it.
 }
 \description{
-Reads two TSV files, filters features by prevalence, computes co-occurrence
-statistics for every feature pair with \code{\link[=run_coreact]{run_coreact()}}, adjusts p-values
-for multiple testing and writes the results plus metadata sidecars to disk.
+Reads two TSV files and runs the three-step co-reactivity procedure:
+feature selection on marginal prevalence, significance testing of every
+retained feature pair with FDR control, and effect-size filtering of the
+significant pairs. Results and metadata sidecars are written to disk.
 }
 \details{
-P-values are adjusted with the Benjamini-Hochberg procedure
-(\code{\link[stats:p.adjust]{stats::p.adjust()}} with \code{method = "BH"}, equivalent to \code{"fdr"}). Note that
-the adjustment is applied to the set of pairs that survive \code{filter_config}
-(by default, pairs with at least one shared sample), not to all possible
-pairs. Use \code{filter_config = list(min_intersection = 0)} to adjust over the
-complete pair space.
+The procedure has three steps, in this order:
+\enumerate{
+\item \strong{Feature selection.} Features are retained by their marginal prevalence
+(\code{min_prevalence}, \code{max_prevalence}). The hypergeometric test conditions
+on the prevalences, so this selection does not affect the validity of the
+p-values of the retained pairs.
+\item \strong{Significance testing.} A one-sided hypergeometric p-value is computed
+for every pair of retained features, adjusted with the Benjamini-Hochberg
+procedure over all \code{n_x * n_y} pairs, and pairs with
+\code{p_adj <= fdr_threshold} are kept.
+\item \strong{Effect-size filtering.} The significant pairs are filtered by
+\code{effect_filters}.
+}
+
+Steps 2 and 3 are implemented so that pairs which cannot end up in the
+output are discarded inside the engine before they are materialised: a
+pair with a raw p-value above \code{fdr_threshold} can never have an adjusted
+p-value below it, and the effect-size thresholds commute with the FDR
+filter. The output is therefore identical to computing all pairs first,
+but memory and disk usage scale with the number of reported pairs rather
+than with \code{n_x * n_y}. Effect-size filters are a convenience for keeping
+output sizes manageable, and with a moderate \code{fdr_threshold} they are
+usually unnecessary.
 }
 \examples{
 path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
@@ -87,8 +117,8 @@ res <- coreact_pipeline(
                    c("protein_id", "gene_name")),
   feature_ids = list("u_pep_id", c("protein_id", "gene_name")),
   min_prevalence = c(0.1, 2),
-  filter_config = list(min_intersection = 1, min_overlap = 0.5),
-  fdr_threshold = 1
+  fdr_threshold = 1,
+  effect_filters = list(min_overlap = 0.5)
 )
 head(res)
 list.files(tempdir(), pattern = "^interactions")

@@ -18,39 +18,52 @@ resolve_xy_args <- function(val, arg_name) {
   }
 }
 
-#' Filter Coreact Data by Prevalence (Internal)
+#' Filter Coreact Data by Marginal Prevalence (Internal)
 #'
-#' Filters a coreact_data object based on row prevalence.
-#' Automatically detects if the threshold is a percentage (< 1) or absolute count (>= 1).
+#' Retains the features of a coreact_data object whose prevalence (number of
+#' positive samples) lies within `[min_thresh, max_thresh]`. Each threshold is
+#' a fraction of the samples if `< 1` and an absolute count if `>= 1`.
 #'
 #' @param obj A `coreact_data` object.
-#' @param thresh Numeric. The filter threshold: a fraction of samples if
-#'   `< 1`, an absolute number of samples if `>= 1`. `0` disables the filter.
+#' @param min_thresh Numeric. Minimum prevalence; `0` disables the lower bound.
+#' @param max_thresh Numeric or `NULL`. Maximum prevalence; `NULL` disables
+#'   the upper bound.
 #' @return A subsetted `coreact_data` object.
 #' @keywords internal
-filter_by_prevalence <- function(obj, thresh) {
-  if (!is.numeric(thresh) || length(thresh) != 1 || is.na(thresh)) {
-    stop("Prevalence threshold must be a single non-NA number.")
+filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
+  if (!is.numeric(min_thresh) || length(min_thresh) != 1 || is.na(min_thresh)) {
+    stop("Minimum prevalence threshold must be a single non-NA number.")
   }
-  if (thresh <= 0) return(obj)
+  if (!is.null(max_thresh) &&
+        (!is.numeric(max_thresh) || length(max_thresh) != 1 || is.na(max_thresh))) {
+    stop("Maximum prevalence threshold must be NULL or a single non-NA number.")
+  }
+  if (min_thresh <= 0 && is.null(max_thresh)) return(obj)
 
-  # Determine cutoff: Absolute vs Percentage
-  if (thresh < 1) {
-    cutoff <- ceiling(thresh * ncol(obj$mat))
-  } else {
-    cutoff <- thresh
+  n_samp <- ncol(obj$mat)
+
+  # Lower cutoff: fraction -> smallest count reaching it; count -> as is
+  lo <- if (min_thresh < 1) ceiling(min_thresh * n_samp) else min_thresh
+  # Upper cutoff: fraction -> largest count not exceeding it; count -> as is
+  hi <- if (is.null(max_thresh)) Inf else if (max_thresh < 1) floor(max_thresh * n_samp) else max_thresh
+
+  if (hi < lo) {
+    stop(sprintf("[%s] Prevalence bounds are empty: min %s > max %s samples.",
+                 obj$name, format(lo), format(hi)))
   }
 
   prev <- Matrix::rowSums(obj$mat > 0)
-  keep <- prev >= cutoff
+  keep <- prev >= lo & prev <= hi
   n_keep <- sum(keep)
 
+  bounds <- if (is.finite(hi)) sprintf("%s to %s", format(lo), format(hi)) else sprintf(">= %s", format(lo))
+
   if (n_keep == 0) {
-    stop(sprintf("Filter removed all features from %s (Cutoff: %s).", obj$name, cutoff))
+    stop(sprintf("[%s] Filter removed all features (prevalence %s samples).", obj$name, bounds))
   }
 
-  message(sprintf("[%s] Prevalence filter (>= %s samples): keeping %d of %d features.",
-                  obj$name, format(cutoff), n_keep, length(keep)))
+  message(sprintf("[%s] Prevalence filter (%s samples): keeping %d of %d features.",
+                  obj$name, bounds, n_keep, length(keep)))
 
   # Uses the S3 subsetting method '[.coreact_data' defined in class_coreact.R
   obj[keep, ]

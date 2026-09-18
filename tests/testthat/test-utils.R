@@ -240,3 +240,29 @@ test_that("resolve_xy_args passes NULL through for both sides", {
   expect_null(res$x)
   expect_null(res$y)
 })
+
+test_that("filter_by_prevalence applies an upper bound", {
+  obj <- make_dummy_obj() # prevalences F1..F5 = 4, 3, 2, 1, 0 of 4 samples
+
+  # Absolute upper bound
+  expect_message(res <- filter_by_prevalence(obj, 0, 2), "0 to 2 samples")
+  expect_equal(rownames(res$mat), c("F3", "F4", "F5"))
+
+  # Fractional upper bound: 0.6 * 4 = 2.4 -> at most 2 samples
+  res_f <- suppressMessages(filter_by_prevalence(obj, 1, 0.6))
+  expect_equal(rownames(res_f$mat), c("F3", "F4"))
+
+  # Both bounds
+  res_b <- suppressMessages(filter_by_prevalence(obj, 0.5, 3))
+  expect_equal(rownames(res_b$mat), c("F2", "F3"))
+
+  # Empty interval and empty result
+  expect_error(filter_by_prevalence(obj, 3, 2), "bounds are empty")
+  expect_equal(rownames(suppressMessages(filter_by_prevalence(obj, 0, 0))$mat), "F5")
+  expect_error(filter_by_prevalence(obj, 5, 6), "removed all features")
+  expect_error(filter_by_prevalence(obj, 0, "2"), "Maximum prevalence")
+
+  # NULL upper bound is the lower-bound-only behaviour
+  expect_equal(suppressMessages(filter_by_prevalence(obj, 3, NULL)),
+               suppressMessages(filter_by_prevalence(obj, 3)))
+})

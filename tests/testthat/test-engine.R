@@ -237,3 +237,34 @@ test_that("worker_chunk_calc matches a brute-force reference on random data", {
     expect_equal(res[[col]], ref[[col]], info = col)
   }
 })
+
+test_that("worker_chunk_calc prunes on raw p-value without changing surviving stats", {
+  full <- worker_chunk_calc(c(1, 2), mat_x, mat_y, prev_x, prev_y, n_samples, list())
+  full <- full[order(full$idx_x, full$idx_y), ]
+  thr <- 0.6
+  pruned <- worker_chunk_calc(c(1, 2), mat_x, mat_y, prev_x, prev_y, n_samples, list(),
+                              max_p_val = thr)
+  pruned <- pruned[order(pruned$idx_x, pruned$idx_y), ]
+
+  expect_true(all(pruned$p_val <= thr))
+  expect_equal(nrow(pruned), sum(full$p_val <= thr))
+  expect_equal(pruned, full[full$p_val <= thr, ])
+
+  # Nothing below an impossible ceiling -> NULL
+  expect_null(worker_chunk_calc(c(1, 2), mat_x, mat_y, prev_x, prev_y, n_samples, list(),
+                                max_p_val = 0))
+})
+
+test_that("effect thresholds of 0 are no-ops, including for NA ratios", {
+  mx <- Matrix::Matrix(c(0, 0, 0,
+                         1, 1, 0), 2, 3, byrow = TRUE, sparse = TRUE)
+  my <- Matrix::Matrix(c(0, 0, 0,
+                         0, 1, 1), 2, 3, byrow = TRUE, sparse = TRUE)
+  px <- Matrix::rowSums(mx)
+  py <- Matrix::rowSums(my)
+  none <- worker_chunk_calc(1:2, mx, my, px, py, 3, list())
+  zero <- worker_chunk_calc(1:2, mx, my, px, py, 3,
+                            list(min_intersection = 0, min_jaccard = 0, min_overlap = 0))
+  expect_equal(nrow(zero), 4)
+  expect_equal(zero[order(zero$idx_x, zero$idx_y), ], none[order(none$idx_x, none$idx_y), ])
+})

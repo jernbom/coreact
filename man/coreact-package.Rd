@@ -4,9 +4,17 @@
 \name{coreact-package}
 \alias{coreact}
 \alias{coreact-package}
-\title{coreact: High-Performance Co-reactivity Analysis}
+\title{coreact: High-Performance Co-Reactivity Analysis}
 \description{
-Optimized pipeline for calculating co-occurrence statistics (Hypergeometric test, Jaccard index, Overlap coefficient) between two sparse matrices. Uses adaptive matrix/vector algebra and parallel processing.
+Optimized pipeline for calculating co-occurrence statistics (hypergeometric test, Jaccard index, overlap coefficient) between the features of two sparse binary matrices that share the same samples. Uses chunked sparse matrix algebra and fork-based parallel processing so that millions of feature pairs can be scored on a single node.
+}
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/jernbom/coreact}
+  \item Report bugs at \url{https://github.com/jernbom/coreact/issues}
+}
+
 }
 \author{
 \strong{Maintainer}: August F. Jernbom \email{ajernbom@jhmi.edu} (\href{https://orcid.org/0000-0002-7773-1851}{ORCID})

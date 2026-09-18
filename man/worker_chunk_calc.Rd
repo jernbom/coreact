@@ -11,7 +11,8 @@ worker_chunk_calc(
   prev_x_chunk,
   prev_y,
   n_samples,
-  config
+  config,
+  max_p_val = NULL
 )
 }
 \arguments{
@@ -27,8 +28,15 @@ worker_chunk_calc(
 
 \item{n_samples}{Integer, total number of samples (ncol).}
 
-\item{config}{List of name-value pairs of filter thresholds. Current valid
-options are: \code{min_intersection}, \code{min_jaccard}, \code{min_overlap}.}
+\item{config}{List of name-value pairs of effect-size thresholds. Current
+valid options are: \code{min_intersection}, \code{min_jaccard}, \code{min_overlap}. A
+threshold of 0 (or a missing entry) disables that filter.}
+
+\item{max_p_val}{Numeric or \code{NULL}. If given, pairs whose raw p-value
+exceeds it are dropped. Because a BH-adjusted p-value is never smaller
+than the raw p-value, dropping pairs with \code{p_val > fdr_threshold} cannot
+change which pairs are significant at that threshold; it only saves
+memory.}
 }
 \value{
 A tibble of passing pairs with stats, or \code{NULL} if none pass.
@@ -36,14 +44,13 @@ A tibble of passing pairs with stats, or \code{NULL} if none pass.
 \description{
 Computes intersection, union, Jaccard index, overlap coefficient and a
 one-sided hypergeometric p-value for every (row of X chunk) x (row of Y)
-pair, then keeps the pairs that pass the structural filters in \code{config}.
+pair, then keeps the pairs that pass the effect-size thresholds in
+\code{config} and, if given, the raw p-value ceiling \code{max_p_val}.
 }
 \details{
 The Jaccard index is undefined when both features are absent from every
 sample (union of size zero), and the overlap coefficient is undefined when
 either feature is absent from every sample. Such ratios are reported as
-\code{NA} and never pass a \code{min_jaccard} / \code{min_overlap} threshold. With the
-default \code{min_intersection = 1} these pairs are excluded anyway, because
-their intersection is zero.
+\code{NA} and never pass a positive \code{min_jaccard} / \code{min_overlap} threshold.
 }
 \keyword{internal}
