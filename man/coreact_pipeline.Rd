@@ -26,20 +26,20 @@ coreact_pipeline(
 \item{out_path}{Path for result file.}
 
 \item{names}{Character vector (length 2). Names for datasets X and Y.
-Default `c("Input_X", "Input_Y")`.}
+Default \code{c("Input_X", "Input_Y")}.}
 
 \item{meta_cols}{List or Vector. Names or indices of metadata columns.
 If a vector, applied to both X and Y.
-If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.}
+If a list of length 2, \code{meta_cols[[1]]} is used for X, \code{meta_cols[[2]]} for Y.}
 
-\item{sample_cols}{Optional List or Vector (default=`NULL`). Names or indices of sample columns.
+\item{sample_cols}{Optional List or Vector (default=\code{NULL}). Names or indices of sample columns.
 If a vector, applied to both X and Y.
-If a list of length 2, `sample_cols[[1]]` is used for X, `sample_cols[[2]]` for Y.
-If `NULL`, all columns not defined in `meta_cols` are used as sample columns.}
+If a list of length 2, \code{sample_cols[[1]]} is used for X, \code{sample_cols[[2]]} for Y.
+If \code{NULL}, all columns not defined in \code{meta_cols} are used as sample columns.}
 
-\item{feature_ids}{List or Vector. Names or indices of columns for constructing unique Feature IDs. If `NULL`, row numbers are used.
+\item{feature_ids}{List or Vector. Names or indices of columns for constructing unique Feature IDs. If \code{NULL}, row numbers are used.
 If a vector, applied to both X and Y.
-If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for Y.}
+If a list of length 2, \code{feature_ids[[1]]} is used for X, \code{feature_ids[[2]]} for Y.}
 
 \item{feature_id_sep}{String. Separator for Feature IDs.}
 
@@ -48,14 +48,48 @@ If a list of length 2, `feature_ids[[1]]` is used for X, `feature_ids[[2]]` for 
 \item{min_prevalence}{Numeric vector (length 1 or 2). Minimum prevalence (rowSum)
 to retain a feature. If < 1, treated as percentage. If >= 1, treated as absolute count.}
 
-\item{filter_config}{List of structural filters (e.g., `min_intersection`).}
+\item{filter_config}{List of structural filters (e.g., \code{min_intersection}).}
 
-\item{fdr_threshold}{Numeric. Max FDR to retain (default 0.05). If `NULL`, no filtering.}
+\item{fdr_threshold}{Numeric. Max FDR to retain (default 0.05). If \code{NULL}, no filtering.}
 
 \item{n_cores}{Integer. Number of cores.}
 
-\item{chunk_size}{Integer or `NULL`. Auto-calculated if `NULL`.}
+\item{chunk_size}{Integer or \code{NULL}. Auto-calculated if \code{NULL}.}
+}
+\value{
+Invisibly, the tibble of results that was written to \code{out_path}
+(including the \code{p_adj} column). Files are written as a side effect: the
+main results table at \code{out_path} and two metadata sidecars
+(\verb{*_metadata_x.tsv}, \verb{*_metadata_y.tsv}) next to it.
 }
 \description{
-Run Full Coreact Pipeline (Disc-to-Disc)
+Reads two TSV files, filters features by prevalence, computes co-occurrence
+statistics for every feature pair with \code{\link[=run_coreact]{run_coreact()}}, adjusts p-values
+for multiple testing and writes the results plus metadata sidecars to disk.
+}
+\details{
+P-values are adjusted with the Benjamini-Hochberg procedure
+(\code{\link[stats:p.adjust]{stats::p.adjust()}} with \code{method = "BH"}, equivalent to \code{"fdr"}). Note that
+the adjustment is applied to the set of pairs that survive \code{filter_config}
+(by default, pairs with at least one shared sample), not to all possible
+pairs. Use \code{filter_config = list(min_intersection = 0)} to adjust over the
+complete pair space.
+}
+\examples{
+path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
+out <- file.path(tempdir(), "interactions.tsv")
+
+res <- coreact_pipeline(
+  paths = c(path_x, path_y),
+  out_path = out,
+  meta_cols = list(c("u_pep_id", "pep_nr", "protein_id", "gene_name"),
+                   c("protein_id", "gene_name")),
+  feature_ids = list("u_pep_id", c("protein_id", "gene_name")),
+  min_prevalence = c(0.1, 2),
+  filter_config = list(min_intersection = 1, min_overlap = 0.5),
+  fdr_threshold = 1
+)
+head(res)
+list.files(tempdir(), pattern = "^interactions")
 }

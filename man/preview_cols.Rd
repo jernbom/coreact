@@ -13,10 +13,14 @@ preview_cols(path_x, path_y)
 }
 \value{
 A data.frame showing indices and column names for both files side-by-side.
-  Returns invisibly; prints to console by default.
+Returns invisibly; prints to console by default.
 }
 \description{
 A helper utility to inspect the headers of two TSV files side-by-side.
-This assists in identifying the correct indices for `meta_cols`, `sample_cols`,
-or `feature_ids` before running the pipeline.
+This assists in identifying the correct indices for \code{meta_cols}, \code{sample_cols},
+or \code{feature_ids} before running the pipeline.
+}
+\examples{
+preview_cols(system.file("extdata", "input_x.tsv", package = "coreact"),
+             system.file("extdata", "input_y.tsv", package = "coreact"))
 }

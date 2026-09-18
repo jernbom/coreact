@@ -7,7 +7,7 @@
 write_metadata_sidecar(obj, keep_ids, out_path, suffix)
 }
 \arguments{
-\item{obj}{A `coreact_data` object (containing `$meta` and `$mat`).}
+\item{obj}{A \code{coreact_data} object (containing \verb{$meta} and \verb{$mat}).}
 
 \item{keep_ids}{Character vector. Feature IDs appearing in the final interaction list.}
 
@@ -20,6 +20,6 @@ NULL (Writes file to disk).
 }
 \description{
 Writes a metadata TSV for features present in the final results.
-Appends `_metadata_\{suffix\}` to the base filename.
+Appends \verb{_metadata_\\\{suffix\\\}} to the base filename.
 }
 \keyword{internal}

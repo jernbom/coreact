@@ -7,12 +7,13 @@
 filter_by_prevalence(obj, thresh)
 }
 \arguments{
-\item{obj}{A `coreact_data` object.}
+\item{obj}{A \code{coreact_data} object.}
 
-\item{thresh}{Numeric. The filter threshold.}
+\item{thresh}{Numeric. The filter threshold: a fraction of samples if
+\verb{< 1}, an absolute number of samples if \verb{>= 1}. \code{0} disables the filter.}
 }
 \value{
-A subsetted `coreact_data` object.
+A subsetted \code{coreact_data} object.
 }
 \description{
 Filters a coreact_data object based on row prevalence.

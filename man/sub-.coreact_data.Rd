@@ -7,7 +7,7 @@
 \method{[}{coreact_data}(x, i, j, ...)
 }
 \arguments{
-\item{x}{A `coreact_data` object.}
+\item{x}{A \code{coreact_data} object.}
 
 \item{i}{Row indices (features).}
 

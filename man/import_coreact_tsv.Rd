@@ -23,11 +23,11 @@ containing metadata.}
 
 \item{sample_cols}{Vector (integer or character) or NULL. Indices or names of
 columns to be used as sample data.
-If `NULL`, all columns NOT in `meta_cols` are used.}
+If \code{NULL}, all columns NOT in \code{meta_cols} are used.}
 
 \item{feature_id}{Vector (integer or character). The columns to use to construct
-unique row names (Feature IDs). Must be a subset of `meta_cols`.
-If multiple columns are provided, they are concatenated using `feature_id_sep`.
+unique row names (Feature IDs). Must be a subset of \code{meta_cols}.
+If multiple columns are provided, they are concatenated using \code{feature_id_sep}.
 If NULL, row numbers are used.}
 
 \item{feature_id_sep}{String. Separator used when concatenating multiple
@@ -37,7 +37,9 @@ feature_id columns. Default is "|".}
 
 \item{n_cores}{Integer. Number of threads for fast reading.}
 
-\item{binarize}{Logical. Should the data matrix be converted to binary?}
+\item{binarize}{Logical. Should the data matrix be converted to binary?
+If \code{TRUE}, every value \verb{>= 1} becomes 1 and everything else 0. If \code{FALSE}
+(default), the sample columns must already contain only 0 and 1.}
 }
 \value{
 A 'coreact_data' object.
@@ -45,4 +47,17 @@ A 'coreact_data' object.
 \description{
 Reads a TSV, separates metadata columns from sample data, and converts
 the sample data to a sparse matrix.
+}
+\details{
+Sample columns must be numeric and complete: text columns and missing
+values are rejected with an error naming the offending columns (use
+\code{\link[=preview_cols]{preview_cols()}} to inspect headers and choose \code{meta_cols} /
+\code{sample_cols}). The resulting matrix is always a general sparse
+\code{dgCMatrix}.
+}
+\examples{
+path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+x
+x$mat[1:3, 1:5]
 }

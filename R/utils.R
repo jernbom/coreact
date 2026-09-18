@@ -211,6 +211,9 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
 #' @return A data.frame showing indices and column names for both files side-by-side.
 #'   Returns invisibly; prints to console by default.
 #' @export
+#' @examples
+#' preview_cols(system.file("extdata", "input_x.tsv", package = "coreact"),
+#'              system.file("extdata", "input_y.tsv", package = "coreact"))
 preview_cols <- function(path_x, path_y) {
 
   if (!file.exists(path_x)) stop("File not found: ", path_x)

@@ -32,6 +32,11 @@
 #' @importFrom data.table fread setDF
 #' @importFrom utils head
 #' @export
+#' @examples
+#' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+#' x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+#' x
+#' x$mat[1:3, 1:5]
 import_coreact_tsv <- function(path,
                                meta_cols = 1,
                                sample_cols = NULL,

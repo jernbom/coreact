@@ -7,12 +7,12 @@
 \method{cbind}{coreact_data}(..., deparse.level = 1)
 }
 \arguments{
-\item{...}{`coreact_data` objects to combine.}
+\item{...}{\code{coreact_data} objects to combine.}
 
 \item{deparse.level}{Integer. Ignored.}
 }
 \value{
-A combined `coreact_data` object.
+A combined \code{coreact_data} object.
 }
 \description{
 Combines multiple coreact_data objects by adding samples.

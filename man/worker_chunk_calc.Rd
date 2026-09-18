@@ -27,12 +27,23 @@ worker_chunk_calc(
 
 \item{n_samples}{Integer, total number of samples (ncol).}
 
-\item{config}{List of name-value pairs of filter thresholds. Current valid options are: `min_intersection`, `min_jaccard`, `min_overlap`.}
+\item{config}{List of name-value pairs of filter thresholds. Current valid
+options are: \code{min_intersection}, \code{min_jaccard}, \code{min_overlap}.}
 }
 \value{
-A tibble of passing pairs with stats.
+A tibble of passing pairs with stats, or \code{NULL} if none pass.
 }
 \description{
-Internal Worker: Compute Co-occurrence Stats for a Chunk
+Computes intersection, union, Jaccard index, overlap coefficient and a
+one-sided hypergeometric p-value for every (row of X chunk) x (row of Y)
+pair, then keeps the pairs that pass the structural filters in \code{config}.
+}
+\details{
+The Jaccard index is undefined when both features are absent from every
+sample (union of size zero), and the overlap coefficient is undefined when
+either feature is absent from every sample. Such ratios are reported as
+\code{NA} and never pass a \code{min_jaccard} / \code{min_overlap} threshold. With the
+default \code{min_intersection = 1} these pairs are excluded anyway, because
+their intersection is zero.
 }
 \keyword{internal}

@@ -1,5 +1,9 @@
 #' Run Full Coreact Pipeline (Disc-to-Disc)
 #'
+#' Reads two TSV files, filters features by prevalence, computes co-occurrence
+#' statistics for every feature pair with [run_coreact()], adjusts p-values
+#' for multiple testing and writes the results plus metadata sidecars to disk.
+#'
 #' @param paths Character vector (length 2). Paths to input TSV files (X and Y).
 #' @param out_path Path for result file.
 #' @param names Character vector (length 2). Names for datasets X and Y.
@@ -36,6 +40,23 @@
 #'   main results table at `out_path` and two metadata sidecars
 #'   (`*_metadata_x.tsv`, `*_metadata_y.tsv`) next to it.
 #' @export
+#' @examples
+#' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+#' path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
+#' out <- file.path(tempdir(), "interactions.tsv")
+#'
+#' res <- coreact_pipeline(
+#'   paths = c(path_x, path_y),
+#'   out_path = out,
+#'   meta_cols = list(c("u_pep_id", "pep_nr", "protein_id", "gene_name"),
+#'                    c("protein_id", "gene_name")),
+#'   feature_ids = list("u_pep_id", c("protein_id", "gene_name")),
+#'   min_prevalence = c(0.1, 2),
+#'   filter_config = list(min_intersection = 1, min_overlap = 0.5),
+#'   fdr_threshold = 1
+#' )
+#' head(res)
+#' list.files(tempdir(), pattern = "^interactions")
 coreact_pipeline <- function(paths,
                              out_path,
                              names = c("Input_X", "Input_Y"),
@@ -171,15 +192,59 @@ coreact_pipeline <- function(paths,
   invisible(results)
 }
 
-#' Run Coreact Engine (Internal)
+#' Run Coreact Engine on In-Memory Objects
 #'
-#' @param data_x,data_y coreact_data objects.
-#' @param n_cores Integer.
-#' @param chunk_size Integer.
-#' @param filter_config List of thresholds.
+#' The computational core of the package: computes co-occurrence statistics
+#' for every pair of features between two `coreact_data` objects that share
+#' the same samples. [coreact_pipeline()] wraps this with file import,
+#' prevalence filtering, FDR adjustment and export; call `run_coreact()`
+#' directly when the data are already in memory or when you want the
+#' unadjusted results as a tibble.
 #'
-#' @return A tibble of results.
+#' @param data_x,data_y `coreact_data` objects (see [new_coreact_data()] and
+#'   [import_coreact_tsv()]). Their sample columns must be identical and in
+#'   the same order.
+#' @param n_cores Integer. Number of worker processes. Values above 1 use a
+#'   fork cluster and are therefore only effective on Linux/macOS; on Windows
+#'   the computation falls back to serial with a warning.
+#' @param chunk_size Integer or `NULL`. Number of X features per work chunk.
+#'   Auto-calculated from the data size and `n_cores` if `NULL`.
+#' @param filter_config Named list of structural filters applied before
+#'   results are collected. Recognised entries: `min_intersection` (minimum
+#'   number of shared samples), `min_jaccard`, `min_overlap`. Omit an entry to
+#'   disable that filter; `list()` keeps every pair.
+#'
+#' @details
+#' For every pair `(x, y)` the following are reported: `intersection`
+#' (samples positive for both), `size_x` / `size_y` (prevalence of each
+#' feature), `union`, `jaccard` (`intersection / union`), `overlap`
+#' (`intersection / min(size_x, size_y)`) and `p_val`, the one-sided
+#' hypergeometric probability of observing at least `intersection` shared
+#' samples given the two prevalences and the total number of samples
+#' (`phyper(intersection - 1, size_x, n_samples - size_x, size_y,
+#' lower.tail = FALSE)`). Jaccard and overlap are `NA` when their
+#' denominator is zero (features absent from every sample).
+#'
+#' The larger of the two feature sets is chunked and processed in parallel;
+#' if `data_y` is larger the two are swapped internally and the result columns
+#' are mapped back, so the output always refers to the inputs as supplied.
+#'
+#' @return A tibble with one row per pair passing `filter_config` and columns
+#'   `feature_x`, `feature_y`, `idx_x`, `idx_y`, `intersection`, `size_x`,
+#'   `size_y`, `union`, `jaccard`, `overlap`, `p_val`. `idx_*` are row indices
+#'   into the corresponding input object. No multiple-testing adjustment is
+#'   applied; see [coreact_pipeline()] or [stats::p.adjust()].
 #' @export
+#' @examples
+#' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+#' path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
+#'
+#' x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+#' y <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = c("protein_id", "gene_name"),
+#'                         name = "Y")
+#'
+#' res <- run_coreact(x, y, filter_config = list(min_intersection = 2))
+#' head(res)
 run_coreact <- function(data_x,
                         data_y,
                         n_cores = 1,
@@ -232,9 +297,9 @@ run_coreact <- function(data_x,
     return(empty_result_tibble())
   }
 
-  # Calculate Stats
-  prev_x <- Matrix::rowSums(data_x$mat > 0)
-  prev_y <- Matrix::rowSums(data_y$mat > 0)
+  # Calculate Stats (as double, so column types do not depend on Matrix version)
+  prev_x <- as.numeric(Matrix::rowSums(data_x$mat > 0))
+  prev_y <- as.numeric(Matrix::rowSums(data_y$mat > 0))
   n_samples <- ncol(data_x$mat)
 
   # --- 2. Auto-Chunking ---
