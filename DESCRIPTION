@@ -9,11 +9,12 @@ Encoding: UTF-8
 Imports: 
     Matrix,
     data.table,
-    dplyr,
     tibble,
     stats,
     methods,
-    parallel
+    parallel,
+    utils
+Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Suggests: 
     testthat (>= 3.0.0)

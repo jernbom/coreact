@@ -77,13 +77,14 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
   to_keep <- all_ids %in% keep_ids
 
   # Create the export table: Feature ID first
-  export_df <- tibble::tibble(feature_id = all_ids[to_keep])
+  export_df <- data.frame(feature_id = all_ids[to_keep], stringsAsFactors = FALSE)
 
   # Bind metadata columns if they exist
   if (!is.null(obj$meta) && ncol(obj$meta) > 0) {
     # Note: obj$meta is expected to be row-aligned with obj$mat
     meta_subset <- obj$meta[to_keep, , drop = FALSE]
-    export_df <- dplyr::bind_cols(export_df, meta_subset)
+    rownames(meta_subset) <- NULL
+    export_df <- cbind(export_df, meta_subset)
   }
 
   message(sprintf("Writing %s metadata (%d features) to %s ...", suffix, nrow(export_df), meta_file))

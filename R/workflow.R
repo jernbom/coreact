@@ -285,37 +285,27 @@ run_coreact <- function(data_x,
     return(empty_result_tibble())
   }
 
-  final_df <- data.table::rbindlist(res) %>% tibble::as_tibble()
+  final_df <- tibble::as_tibble(data.table::rbindlist(res))
 
   # --- 5. Map Indices to IDs ---
   final_df$feature_x <- rownames(data_x$mat)[final_df$idx_x]
   final_df$feature_y <- rownames(data_y$mat)[final_df$idx_y]
 
   # --- 6. Handle Un-Swapping ---
+  # Everything computed above refers to the swapped roles; swap the x/y
+  # suffixed column names back in one pass.
   if (swapped) {
-    final_df <- dplyr::rename(final_df,
-                              idx_x_tmp = idx_x, idx_y_tmp = idx_y,
-                              size_x_tmp = size_x, size_y_tmp = size_y,
-                              feat_x_tmp = feature_x, feat_y_tmp = feature_y
-    ) %>%
-      dplyr::rename(
-        # Map Y (temp X) back to Y
-        idx_y = idx_x_tmp,
-        size_y = size_x_tmp,
-        feature_y = feat_x_tmp,
-
-        # Map X (temp Y) back to X
-        idx_x = idx_y_tmp,
-        size_x = size_y_tmp,
-        feature_x = feat_y_tmp
-      )
+    swap_map <- c(idx_x = "idx_y", idx_y = "idx_x",
+                  size_x = "size_y", size_y = "size_x",
+                  feature_x = "feature_y", feature_y = "feature_x")
+    nms <- names(final_df)
+    hit <- nms %in% names(swap_map)
+    nms[hit] <- swap_map[nms[hit]]
+    names(final_df) <- nms
   }
 
-  # Reorder columns for readability
-  final_df <- final_df %>%
-    dplyr::select(feature_x, feature_y, idx_x, idx_y, everything())
-
-  return(final_df)
+  # Reorder columns for readability (same order as empty_result_tibble())
+  final_df[, names(empty_result_tibble())]
 }
 
 #' Empty Result Schema (Internal)
