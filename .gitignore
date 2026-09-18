@@ -1,4 +1,17 @@
+# R session files
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
+.DS_Store
+
+# Build / check artefacts
+*.tar.gz
+*.Rcheck/
+/doc/
+/Meta/
+inst/doc
+
+# Local outputs from the README example and scratch work
+results/
+tests/sandbox/

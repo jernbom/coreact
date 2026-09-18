@@ -1,7 +1,13 @@
 ^renv$
 ^renv\.lock$
+^\.Rprofile$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^data-raw$
 ^tests/sandbox$
 ^LICENSE\.md$
+^\.github$
+^\.lintr$
+^\.gitignore$
+^codecov\.yml$
+^README\.Rmd$

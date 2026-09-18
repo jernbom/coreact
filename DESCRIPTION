@@ -1,12 +1,20 @@
 Package: coreact
-Title: High-Performance Co-reactivity Analysis
-Version: 1.2.0
-Authors@R: person("August F.", "Jernbom", , "ajernbom@jhmi.edu", role = c("aut", "cre"), comment = c(ORCID = "0000-0002-7773-1851"))
-Description: Optimized pipeline for calculating co-occurrence statistics (Hypergeometric test, Jaccard index, Overlap coefficient) 
-    between two sparse matrices. Uses adaptive matrix/vector algebra and parallel processing.
+Title: High-Performance Co-Reactivity Analysis
+Version: 1.2.0.9000
+Authors@R:
+    person("August F.", "Jernbom", , "ajernbom@jhmi.edu", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-7773-1851"))
+Description: Optimized pipeline for calculating co-occurrence statistics
+    (hypergeometric test, Jaccard index, overlap coefficient) between the
+    features of two sparse binary matrices that share the same samples.
+    Uses chunked sparse matrix algebra and fork-based parallel processing
+    so that millions of feature pairs can be scored on a single node.
 License: AGPL (>= 3)
-Encoding: UTF-8
-Imports: 
+URL: https://github.com/jernbom/coreact
+BugReports: https://github.com/jernbom/coreact/issues
+Depends:
+    R (>= 4.1.0)
+Imports:
     Matrix,
     data.table,
     tibble,
@@ -15,9 +23,11 @@ Imports:
     parallel,
     tools,
     utils
-Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
-Suggests: 
+Suggests:
     testthat (>= 3.0.0),
     withr
 Config/testthat/edition: 3
+Encoding: UTF-8
+Language: en-US
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
