@@ -7,9 +7,9 @@ It addresses the dimensionality problem where both feature sets are large. By ut
 
 ## ⚡ Key Features
 
-* **Adaptive Engine:** Automatically switches between dense matrix operations (for fast block processing) and vectorized operations (for memory safety) based on data density.
-* **Memory Efficiency:** Built on the `Matrix` package for sparse data handling. Uses **Fork-based parallelization** (Copy-On-Write) on Linux/macOS systems to share memory across workers without duplication.
-* **Disc-to-Disc Pipeline:** A single wrapper function handles data loading, prevalence filtering, computation, FDR correction, and result export.
+* **Chunked Matrix Engine:** Intersections for a block of X features against all of Y are computed in one sparse cross-product; the secondary matrices (Jaccard, overlap) are only materialised when they are needed for filtering, and the final statistics are computed vectorised on the surviving pairs.
+* **Memory Efficiency:** Built on the `Matrix` package for sparse data handling. Uses **Fork-based parallelization** (Copy-On-Write) on Linux/macOS systems to share memory across workers without duplication. On Windows the computation runs serially.
+* **Disc-to-Disc Pipeline:** A single wrapper function handles data loading, prevalence filtering, computation, FDR correction, and result export. The engine (`run_coreact()`) is also available for objects already in memory.
 * **Statistical Rigor:** Computes one-tailed Hypergeometric P-values (enrichment) and supports standard FDR (Benjamini-Hochberg) correction.
 
 ## 📦 Installation
@@ -22,7 +22,7 @@ devtools::install_github("jernbom/coreact")
 
 ```
 
-*(Note: Requires a C++ compiler and the `Matrix` package, which are available on many HPC R environments.)*
+*(Note: `coreact` contains no compiled code of its own; it depends on `Matrix`, `data.table` and `tibble`, which are available as binaries on most HPC R environments.)*
 
 ## 🚀 Quick Start
 
@@ -74,13 +74,29 @@ coreact_pipeline(
 
 ```
 
+`coreact_pipeline()` writes the results to disk and also returns them invisibly, so `res <- coreact_pipeline(...)` gives you the same table in-session.
+
+### Working in memory
+
+If the data are already loaded, or you want the unadjusted statistics as a tibble, use the importer and the engine directly:
+
+```r
+x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+y <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = c("protein_id", "gene_name"), name = "Y")
+
+res <- run_coreact(x, y, filter_config = list(min_intersection = 2))
+res$p_adj <- p.adjust(res$p_val, method = "BH")
+```
+
+`preview_cols(path_x, path_y)` prints the column headers of both files side by side, which helps when choosing `meta_cols`, `sample_cols` and `feature_ids` by index.
+
 ## 📄 Input Data Format
 
 `coreact` expects two TSV files (X and Y). The structure must be consistent:
 
 1. **Metadata Columns:** Text or IDs (must be specified in `meta_cols`).
-2. **Sample Columns:** Binary data (0 or 1).
-3. **Consistency:** Sample column names must match exactly between X and Y.
+2. **Sample Columns:** Binary data (0 or 1), numeric and without missing values. Count data can be thresholded at `>= 1` with `binarize = TRUE`.
+3. **Consistency:** Sample column names must match exactly between X and Y (use `sample_cols` to select a shared subset).
 
 **Example Input X (`input_x.tsv`):**
 
@@ -105,10 +121,12 @@ The pipeline produces tab-separated files. Below is a preview of the main result
 
 | feature_x | feature_y | idx_x | idx_y | intersection | size_x | size_y | union | jaccard | overlap | p_val | p_adj |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PEP_1001 | PROT_1|GENE_A | 1 | 1 | 1 | 1 | 5 | 5 | 0.200 | 1.000 | 0.500 | 0.829 |
-| PEP_1002 | PROT_1|GENE_A | 2 | 1 | 2 | 3 | 5 | 6 | 0.333 | 0.667 | 0.500 | 0.829 |
-| PEP_1003 | PROT_1|GENE_A | 3 | 1 | 1 | 2 | 5 | 6 | 0.167 | 0.500 | 0.778 | 0.829 |
-| PEP_1004 | PROT_1|GENE_A | 4 | 1 | 2 | 2 | 5 | 5 | 0.400 | 1.000 | 0.222 | 0.829 |
+| PEP_1001 | PROT_1\|GENE_A | 1 | 1 | 1 | 1 | 5 | 5 | 0.200 | 1.000 | 0.500 | 0.829 |
+| PEP_1002 | PROT_1\|GENE_A | 2 | 1 | 2 | 3 | 5 | 6 | 0.333 | 0.667 | 0.500 | 0.829 |
+| PEP_1003 | PROT_1\|GENE_A | 3 | 1 | 1 | 2 | 5 | 6 | 0.167 | 0.500 | 0.778 | 0.829 |
+| PEP_1004 | PROT_1\|GENE_A | 4 | 1 | 2 | 2 | 5 | 5 | 0.400 | 1.000 | 0.222 | 0.829 |
+
+`idx_x` / `idx_y` are the row numbers of the features in the (prevalence-filtered) X and Y inputs. `jaccard` and `overlap` are `NA` when their denominator is zero, i.e. for features that are absent from every sample; such pairs only appear in the output if `min_intersection` is set to 0.
 
 
 Corresponding metadata is saved in sidecar files (linked by `feature_x` / `feature_y`):
@@ -128,16 +146,29 @@ Corresponding metadata is saved in sidecar files (linked by `feature_x` / `featu
 For every pair of features $(A, B)$:
 
 1. **Intersection ($A \cap B$):** Number of samples where both features are present.
-2. **Union ($A \cup B$):** Number of samples where $A$ or $B$ is present ($Size_A + Size_B - Intersection$
+2. **Union ($A \cup B$):** Number of samples where $A$ or $B$ is present ($|A| + |B| - |A \cap B|$).
 3. **Jaccard Index:**
   $$J = \frac{|A \cap B|}{|A \cup B|}$$
 4. **Overlap Coefficient:**
-  $$J = \frac{|A \cap B|}{min(|A|, |B|)}$$
-5. **P-value (Hypergeometric):** Calculated using `phyper(q, m, n, k, lower.tail=FALSE)` where:
+  $$O = \frac{|A \cap B|}{\min(|A|, |B|)}$$
+5. **P-value (Hypergeometric):** The one-sided probability of observing at least $|A \cap B|$ shared samples, calculated using `phyper(q, m, n, k, lower.tail = FALSE)` where:
 * $q = |A \cap B| - 1$
 * $m = |A|$ (Prevalence of Feature A)
 * $n = N_{samples} - |A|$
 * $k = |B|$ (Prevalence of Feature B)
+6. **FDR (`p_adj`):** Benjamini-Hochberg adjustment (`p.adjust(method = "BH")`) over the pairs that survive `filter_config`. With the default `min_intersection = 1` this is the set of pairs sharing at least one sample; use `filter_config = list(min_intersection = 0)` to adjust over all pairs instead.
+
+## 🛠️ Development
+
+```r
+devtools::load_all()
+devtools::test()          # testthat suite, including a brute-force reference implementation
+devtools::document()      # regenerate NAMESPACE and man/ after editing roxygen comments
+devtools::check()         # R CMD check
+lintr::lint_package()     # style; CI fails on any lint
+```
+
+Continuous integration runs `R CMD check` on Linux (devel, release, oldrel), macOS and Windows for every push and pull request. See `NEWS.md` for the changelog.
 
 ## ⚠️ Status & Attribution
 
