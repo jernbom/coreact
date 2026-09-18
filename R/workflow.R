@@ -22,6 +22,19 @@
 #' @param fdr_threshold Numeric. Max FDR to retain (default 0.05). If `NULL`, no filtering.
 #' @param n_cores Integer. Number of cores.
 #' @param chunk_size Integer or `NULL`. Auto-calculated if `NULL`.
+#'
+#' @details
+#' P-values are adjusted with the Benjamini-Hochberg procedure
+#' ([stats::p.adjust()] with `method = "BH"`, equivalent to `"fdr"`). Note that
+#' the adjustment is applied to the set of pairs that survive `filter_config`
+#' (by default, pairs with at least one shared sample), not to all possible
+#' pairs. Use `filter_config = list(min_intersection = 0)` to adjust over the
+#' complete pair space.
+#'
+#' @return Invisibly, the tibble of results that was written to `out_path`
+#'   (including the `p_adj` column). Files are written as a side effect: the
+#'   main results table at `out_path` and two metadata sidecars
+#'   (`*_metadata_x.tsv`, `*_metadata_y.tsv`) next to it.
 #' @export
 coreact_pipeline <- function(paths,
                              out_path,
@@ -114,15 +127,13 @@ coreact_pipeline <- function(paths,
   )
 
   # --- 6. Post-Processing (FDR & Write) ---
-  if (nrow(results) > 0) {
-    # Calculate FDR
-    results$p_adj <- stats::p.adjust(results$p_val, method = "fdr")
+  # Benjamini-Hochberg over the pairs that survived the structural filters.
+  # Always add the column so the output schema is identical for empty results.
+  results$p_adj <- stats::p.adjust(results$p_val, method = "BH")
 
-    # Filter by FDR
-    if (!is.null(fdr_threshold)) {
-      message(sprintf("Filtering results by FDR <= %s ...", fdr_threshold))
-      results <- results[results$p_adj <= fdr_threshold, ]
-    }
+  if (!is.null(fdr_threshold) && nrow(results) > 0) {
+    message(sprintf("Filtering results by FDR <= %s ...", fdr_threshold))
+    results <- results[results$p_adj <= fdr_threshold, , drop = FALSE]
   }
 
   # Write Main Interactions File
@@ -154,6 +165,7 @@ coreact_pipeline <- function(paths,
   )
 
   message("Pipeline completed successfully.")
+  invisible(results)
 }
 
 #' Run Coreact Engine (Internal)
