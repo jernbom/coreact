@@ -38,8 +38,15 @@ coreact_pipeline <- function(paths,
                              chunk_size = NULL) {
 
   # --- 1. Argument Validation & Expansion ---
-  if (length(paths) != 2 && !is.character(paths)) stop("Argument 'paths' must be a character vector of length 2.")
-  if (length(names) != 2 && !is.character(names)) stop("Argument 'names' must be a character vector of length 2.")
+  if (!is.character(paths) || length(paths) != 2) {
+    stop("Argument 'paths' must be a character vector of length 2.")
+  }
+  if (!is.character(names) || length(names) != 2) {
+    stop("Argument 'names' must be a character vector of length 2.")
+  }
+  if (!is.character(out_path) || length(out_path) != 1) {
+    stop("Argument 'out_path' must be a single file path.")
+  }
 
   # Resolve args
   m_cols <- resolve_xy_args(meta_cols, "meta_cols")
@@ -49,11 +56,15 @@ coreact_pipeline <- function(paths,
   s_cols <- if (!is.null(sample_cols)) resolve_xy_args(sample_cols, "sample_cols") else NULL
 
   # Binarize recycling
-  if (length(binarize) > 2) stop("binarize must have length 1 or 2.")
+  if (!is.logical(binarize) || !length(binarize) %in% 1:2 || anyNA(binarize)) {
+    stop("Argument 'binarize' must be a logical vector of length 1 or 2 without NA.")
+  }
   if (length(binarize) == 1) binarize <- rep(binarize, 2)
 
   # Prevalence recycling
-  if (length(min_prevalence) > 2) stop("min_prevalence must have length 1 or 2.")
+  if (!is.numeric(min_prevalence) || !length(min_prevalence) %in% 1:2 || anyNA(min_prevalence)) {
+    stop("Argument 'min_prevalence' must be a numeric vector of length 1 or 2 without NA.")
+  }
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
 
   # --- 2. Load Data ---
