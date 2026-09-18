@@ -80,6 +80,9 @@ coreact_pipeline <- function(paths,
   }
   if (length(min_prevalence) == 1) min_prevalence <- rep(min_prevalence, 2)
 
+  # Fail fast on a malformed filter_config, before reading (potentially large) files
+  validate_filter_config(filter_config)
+
   # --- 2. Load Data ---
   # Load X
   obj_x <- import_coreact_tsv(
@@ -183,15 +186,51 @@ run_coreact <- function(data_x,
                         chunk_size = NULL,
                         filter_config = list(min_intersection = 1)) {
 
+  # --- 0. Input Validation ---
+  if (!inherits(data_x, "coreact_data") || !inherits(data_y, "coreact_data")) {
+    stop("'data_x' and 'data_y' must be 'coreact_data' objects (see new_coreact_data()).")
+  }
+  validate_filter_config(filter_config)
+  if (!is.numeric(n_cores) || length(n_cores) != 1 || is.na(n_cores) || n_cores < 1) {
+    stop("'n_cores' must be a single integer >= 1.")
+  }
+  if (!is.null(chunk_size) &&
+        (!is.numeric(chunk_size) || length(chunk_size) != 1 || is.na(chunk_size) || chunk_size < 1)) {
+    stop("'chunk_size' must be NULL or a single integer >= 1.")
+  }
+
+  # Samples must be the same set, in the same order, for tcrossprod to mean
+  # "shared samples". The pipeline checks this on import; check again here so
+  # that direct callers get the same protection.
+  cn_x <- colnames(data_x$mat)
+  cn_y <- colnames(data_y$mat)
+  if (is.null(cn_x) || is.null(cn_y)) {
+    if (ncol(data_x$mat) != ncol(data_y$mat)) {
+      stop(sprintf("Sample count differs: '%s' has %d columns, '%s' has %d.",
+                   data_x$name, ncol(data_x$mat), data_y$name, ncol(data_y$mat)))
+    }
+  } else if (!identical(cn_x, cn_y)) {
+    stop(format_col_mismatch(data_x$mat, data_y$mat, data_x$name, data_y$name))
+  }
+
   # --- 1. Swap Optimization ---
+  # Chunk over the larger feature set so that the (smaller) Y matrix is what
+  # every worker holds in full.
   swapped <- FALSE
   if (nrow(data_x$mat) < nrow(data_y$mat)) {
     message("Optimizing: Swapping X and Y for load balancing...")
-    tmp <- data_x; data_x <- data_y; data_y <- tmp
+    tmp <- data_x
+    data_x <- data_y
+    data_y <- tmp
     swapped <- TRUE
   }
 
   n_features_x <- nrow(data_x$mat)
+
+  # Nothing to compare: return the empty schema rather than failing in split().
+  if (n_features_x == 0 || nrow(data_y$mat) == 0) {
+    return(empty_result_tibble())
+  }
 
   # Calculate Stats
   prev_x <- Matrix::rowSums(data_x$mat > 0)
@@ -205,11 +244,13 @@ run_coreact <- function(data_x,
     chunk_size <- max(50, min(calc_size, 2000))
     if (n_features_x < 200) chunk_size <- 50
     message(sprintf("Auto-chunking: Size = %d rows (%d total chunks).",
-                    chunk_size, ceiling(n_features_x/chunk_size)))
+                    chunk_size, ceiling(n_features_x / chunk_size)))
   }
+  chunk_size <- as.integer(chunk_size)
 
   # --- 3. Execution ---
-  chunks <- split(1:n_features_x, ceiling(seq_along(1:n_features_x) / chunk_size))
+  feature_idx <- seq_len(n_features_x)
+  chunks <- split(feature_idx, ceiling(feature_idx / chunk_size))
 
   run_fun <- function(idx) {
     worker_chunk_calc(
@@ -237,17 +278,11 @@ run_coreact <- function(data_x,
   }
 
   # --- 4. Assembly ---
-  res <- res[!sapply(res, is.null)]
+  res <- Filter(Negate(is.null), res)
 
   # Prepare Empty Schema if no results
   if (length(res) == 0) {
-    empty_df <- tibble::tibble(
-      feature_x = character(), feature_y = character(),
-      idx_x = integer(), idx_y = integer(),
-      intersection = numeric(), size_x = numeric(), size_y = numeric(),
-      union = numeric(), jaccard = numeric(), overlap = numeric(), p_val = numeric()
-    )
-    return(empty_df)
+    return(empty_result_tibble())
   }
 
   final_df <- data.table::rbindlist(res) %>% tibble::as_tibble()
@@ -281,4 +316,51 @@ run_coreact <- function(data_x,
     dplyr::select(feature_x, feature_y, idx_x, idx_y, everything())
 
   return(final_df)
+}
+
+#' Empty Result Schema (Internal)
+#'
+#' The zero-row tibble returned by [run_coreact()] when no pair passes the
+#' structural filters or when an input has no features. Column names and
+#' types match a non-empty result.
+#'
+#' @return A zero-row tibble.
+#' @keywords internal
+empty_result_tibble <- function() {
+  tibble::tibble(
+    feature_x = character(), feature_y = character(),
+    idx_x = integer(), idx_y = integer(),
+    intersection = numeric(), size_x = numeric(), size_y = numeric(),
+    union = numeric(), jaccard = numeric(), overlap = numeric(), p_val = numeric()
+  )
+}
+
+#' Validate Structural Filter Configuration (Internal)
+#'
+#' @param config A named list. Recognised entries are `min_intersection`,
+#'   `min_jaccard` and `min_overlap`, each a single non-negative number.
+#' @return `config`, invisibly. Errors on unknown names or invalid values.
+#' @keywords internal
+validate_filter_config <- function(config) {
+  if (is.null(config)) return(invisible(config))
+  if (!is.list(config)) stop("'filter_config' must be a named list.")
+  if (length(config) == 0) return(invisible(config))
+
+  allowed <- c("min_intersection", "min_jaccard", "min_overlap")
+  nms <- names(config)
+  if (is.null(nms) || any(nms == "")) {
+    stop("All elements of 'filter_config' must be named.")
+  }
+  unknown <- setdiff(nms, allowed)
+  if (length(unknown) > 0) {
+    stop(sprintf("Unknown 'filter_config' entries: %s. Valid names are: %s.",
+                 paste(unknown, collapse = ", "), paste(allowed, collapse = ", ")))
+  }
+  for (nm in nms) {
+    v <- config[[nm]]
+    if (!is.numeric(v) || length(v) != 1 || is.na(v) || v < 0) {
+      stop(sprintf("'filter_config$%s' must be a single non-negative number.", nm))
+    }
+  }
+  invisible(config)
 }
