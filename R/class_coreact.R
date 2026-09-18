@@ -3,23 +3,42 @@
 #' Internal constructor to create a `coreact_data` object.
 #' Strict validation: Row names must be present, unique, and identical in both inputs.
 #'
-#' @param mat A sparse binary matrix (dgCMatrix) containing counts/values.
-#'   Rows are features, columns are samples.
+#' @param mat A binary (0/1) matrix with features as rows and samples as
+#'   columns. Preferably a sparse `dgCMatrix`; a base `matrix` is accepted and
+#'   converted to `dgCMatrix`.
 #' @param meta A data.frame containing feature metadata (e.g., Gene Symbols).
 #'   Number of rows must match `mat`.
 #' @param name String. An identifier for the dataset.
 #'
-#' @return An S3 object of class `coreact_data`.
+#' @return An S3 object of class `coreact_data`: a list with elements `mat`
+#'   (the sparse matrix), `meta` (the metadata data.frame) and `name`.
 #' @importFrom methods is
 #' @export
+#' @examples
+#' mat <- matrix(c(1, 0, 1, 1, 0, 0), nrow = 2,
+#'               dimnames = list(c("F1", "F2"), c("S1", "S2", "S3")))
+#' meta <- data.frame(symbol = c("A", "B"), row.names = c("F1", "F2"))
+#' obj <- new_coreact_data(mat, meta, name = "demo")
+#' obj
 new_coreact_data <- function(mat, meta, name = "unknown") {
 
   # 1. Type Validation
+  if (is.matrix(mat)) {
+    if (!is.numeric(mat) && !is.logical(mat)) {
+      stop("Input 'mat' must be a numeric or logical matrix.")
+    }
+    if (anyNA(mat)) stop("Input 'mat' must not contain NA values.")
+    if (!is_binary_matrix(mat)) stop("Input 'mat' must be a binary matrix.")
+    mat <- as_binary_sparse(+mat)
+  }
   if (!methods::is(mat, "Matrix")) {
-    stop("Input 'mat' must be a Matrix (preferably sparse).")
+    stop("Input 'mat' must be a Matrix (preferably sparse) or a base matrix.")
   }
   if (!is.data.frame(meta)) {
     stop("Input 'meta' must be a data.frame.")
+  }
+  if (!is.character(name) || length(name) != 1) {
+    stop("Input 'name' must be a single string.")
   }
 
   # 2. Dimension Validation
@@ -41,12 +60,10 @@ new_coreact_data <- function(mat, meta, name = "unknown") {
     stop("Row names (Feature IDs) in Matrix and Metadata must be identical and in the same order.")
   }
 
-  if (any(duplicated(rownames(mat))) || any(duplicated(rownames(meta)))) stop("Row names must be unique.")
+  if (anyDuplicated(mat_names)) stop("Row names must be unique.")
 
   # 4. Value Validation
-
-  is_binary <- is_binary_matrix(mat)
-  if (!is_binary) stop("Input 'mat' must be a binary matrix.")
+  if (!is_binary_matrix(mat)) stop("Input 'mat' must be a binary matrix.")
 
   # 5. Create Object
   structure(
@@ -73,13 +90,25 @@ print.coreact_data <- function(x, ...) {
   mem_size <- format(object.size(x), units = "auto")
   cat(sprintf("Size: %s\n", mem_size))
 
-  if (!is.null(rownames(x$mat))) {
+  if (!is.null(rownames(x$mat)) && nrow(x$mat) > 0) {
     n_show <- min(3, nrow(x$mat))
-    ids <- rownames(x$mat)[1:n_show]
+    ids <- rownames(x$mat)[seq_len(n_show)]
     cat(sprintf("Features: %s%s\n", paste(ids, collapse = ", "),
                 if (nrow(x$mat) > 3) " ..." else ""))
   }
+  if (ncol(x$meta) > 0) {
+    cat(sprintf("Metadata columns: %s\n", paste(colnames(x$meta), collapse = ", ")))
+  }
   invisible(x)
+}
+
+#' Dimensions of a Coreact Data Object
+#'
+#' @param x A `coreact_data` object.
+#' @return Integer vector: number of features (rows) and samples (columns).
+#' @export
+dim.coreact_data <- function(x) {
+  dim(x$mat)
 }
 
 #' Subset Coreact Data
@@ -117,13 +146,18 @@ cbind.coreact_data <- function(..., deparse.level = 1) {
   objects <- list(...)
 
   if (length(objects) == 0) return(NULL)
+
+  is_coreact <- vapply(objects, inherits, logical(1), what = "coreact_data")
+  if (!all(is_coreact)) {
+    stop("All objects passed to cbind() must be 'coreact_data' objects.")
+  }
+
   if (length(objects) == 1) return(objects[[1]])
 
   ref_ids <- rownames(objects[[1]]$mat)
 
-  for (idx in 2:length(objects)) {
-    curr_obj <- objects[[idx]]
-    curr_ids <- rownames(curr_obj$mat)
+  for (idx in seq(2, length(objects))) {
+    curr_ids <- rownames(objects[[idx]]$mat)
 
     if (!identical(ref_ids, curr_ids)) {
       stop(sprintf(
@@ -133,10 +167,20 @@ cbind.coreact_data <- function(..., deparse.level = 1) {
     }
   }
 
+  all_samples <- unlist(lapply(objects, function(x) colnames(x$mat)))
+  if (!is.null(all_samples) && anyDuplicated(all_samples)) {
+    dups <- unique(all_samples[duplicated(all_samples)])
+    stop(sprintf(
+      "Cannot cbind objects: sample names would be duplicated (%s%s).",
+      paste(head(dups, 5), collapse = ", "),
+      if (length(dups) > 5) sprintf(", ... (+%d more)", length(dups) - 5) else ""
+    ))
+  }
+
   all_mats <- lapply(objects, function(x) x$mat)
   combined_mat <- do.call(cbind, all_mats)
   combined_meta <- objects[[1]]$meta
-  new_name <- paste(sapply(objects, function(x) x$name), collapse = "+")
+  new_name <- paste(vapply(objects, function(x) x$name, character(1)), collapse = "+")
 
   new_coreact_data(combined_mat, combined_meta, name = new_name)
 }

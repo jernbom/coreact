@@ -114,21 +114,24 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
 #'
 #' @param x A matrix-like object (base `matrix` or `Matrix::sparseMatrix`).
 #'
-#' @return `TRUE` if all elements are 0 or 1; otherwise `FALSE`.
+#' @return `TRUE` if all elements are 0 or 1; otherwise `FALSE`. `NA` values
+#'   count as non-binary.
 #'
 #' @keywords internal
-#' # @export
 is_binary_matrix <- function(x) {
+  if (inherits(x, "nsparseMatrix")) {
+    # Pattern matrices store no values: every entry is TRUE/FALSE by construction
+    return(TRUE)
+  }
   if (inherits(x, "sparseMatrix")) {
     # Check only stored values (@x slot)
     # If a value is stored, it must be 0 or 1.
     # (Implicit values are always 0, which is valid).
     return(all(x@x %in% c(0, 1)))
-  } else {
-    # Short-circuit check for dense matrices
-    # Returns FALSE immediately if a non-0/1 value is found
-    return(!any(x != 0 & x != 1))
   }
+  # Dense (base matrix or dense Matrix): NA is neither 0 nor 1
+  vals <- as.vector(x)
+  !anyNA(vals) && !any(vals != 0 & vals != 1)
 }
 
 #' Format Column Mismatch Error (Internal Helper)
