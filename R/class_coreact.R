@@ -51,6 +51,13 @@ new_coreact_data <- function(mat, meta, name = "unknown") {
   mat_names <- rownames(mat)
   meta_names <- rownames(meta)
 
+  # A zero-row matrix cannot carry row names (Matrix returns NULL); allow it so
+  # that subsetting to no features (e.g. after filtering) yields a valid object.
+  if (nrow(mat) == 0) {
+    mat_names <- character(0)
+    meta_names <- as.character(meta_names)
+  }
+
   if (is.null(mat_names)) {
     stop("Input 'mat' must have row names (Feature IDs).")
   }

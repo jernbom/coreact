@@ -188,3 +188,55 @@ test_that("preview_cols aligns and displays columns", {
   # Error check
   expect_error(preview_cols("nonexistent", f2), "File not found")
 })
+
+test_that("filter_by_prevalence validates the threshold and reports counts", {
+  obj <- make_dummy_obj()
+
+  expect_error(filter_by_prevalence(obj, NA), "single non-NA number")
+  expect_error(filter_by_prevalence(obj, "0.5"), "single non-NA number")
+  expect_error(filter_by_prevalence(obj, c(0.1, 0.2)), "single non-NA number")
+
+  expect_message(filter_by_prevalence(obj, 0.5), "keeping 3 of 5 features")
+  expect_message(filter_by_prevalence(obj, 3), "\\(>= 3 samples\\)")
+  # Zero threshold is a no-op and stays silent
+  expect_silent(filter_by_prevalence(obj, 0))
+})
+
+test_that("write_metadata_sidecar handles dotted directories and multi-dot names", {
+  obj <- make_dummy_obj()
+  tmp <- withr::local_tempdir()
+  dotted_dir <- file.path(tmp, "run.v2")
+  dir.create(dotted_dir)
+
+  # No extension in the file name, but a dot in the directory
+  out_noext <- file.path(dotted_dir, "results")
+  suppressMessages(write_metadata_sidecar(obj, "F1", out_noext, "x"))
+  expect_true(file.exists(file.path(dotted_dir, "results_metadata_x.tsv")))
+
+  # Multi-dot file name: suffix goes before the final extension
+  out_multi <- file.path(dotted_dir, "results.final.txt")
+  suppressMessages(write_metadata_sidecar(obj, "F1", out_multi, "y"))
+  expect_true(file.exists(file.path(dotted_dir, "results.final_metadata_y.txt")))
+
+  # Empty keep_ids -> header-only sidecar with the metadata columns
+  suppressMessages(write_metadata_sidecar(obj, character(0), out_noext, "z"))
+  df <- data.table::fread(file.path(dotted_dir, "results_metadata_z.tsv"))
+  expect_equal(nrow(df), 0)
+  expect_named(df, c("feature_id", "id", "symbol"))
+})
+
+test_that("is_binary_matrix handles pattern, logical and NA-containing matrices", {
+  m <- Matrix::Matrix(c(1, 0, 1, 1), 2, sparse = TRUE)
+  expect_true(is_binary_matrix(m))
+  expect_true(is_binary_matrix(m > 0))                       # lgCMatrix
+  expect_true(is_binary_matrix(methods::as(m, "nMatrix")))   # pattern matrix, no @x
+  expect_true(is_binary_matrix(Matrix::Matrix(c(1, 0, 1, 1), 2, sparse = FALSE))) # dgeMatrix
+  expect_false(is_binary_matrix(matrix(c(1, NA), 1)))
+  expect_true(is_binary_matrix(matrix(c(TRUE, FALSE), 1)))
+})
+
+test_that("resolve_xy_args passes NULL through for both sides", {
+  res <- resolve_xy_args(NULL, "arg")
+  expect_null(res$x)
+  expect_null(res$y)
+})
