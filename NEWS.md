@@ -1,4 +1,4 @@
-# coreact (development version)
+# coreact 1.3.0
 
 ## Procedure
 
@@ -21,7 +21,7 @@
 
 * `coreact_pipeline()` argument validation used `&&` where `||` was intended,
   so malformed `paths` / `names` were not caught. Now validated, together with
-  `out_path`, `binarize`, `min_prevalence` and `filter_config`, before any
+  `out_path`, `binarize`, `min_prevalence` and `effect_filters`, before any
   file is read.
 * Structural filters (`min_jaccard`, `min_overlap`) failed with
   "missing value where TRUE/FALSE needed" when a feature was absent from every
@@ -35,7 +35,7 @@
 * `run_coreact()` now checks that the sample columns of `data_x` and `data_y`
   are identical (previously only `coreact_pipeline()` did), returns the empty
   schema for zero-feature inputs instead of failing on `1:0`, and validates
-  `chunk_size`, `n_cores` and `filter_config` (a misspelt filter name was
+  `chunk_size`, `n_cores` and `effect_filters` (a misspelt filter name was
   silently ignored, i.e. no filter was applied).
 * `cbind()` on `coreact_data` objects refuses to combine objects with
   overlapping sample names.
@@ -61,12 +61,12 @@
 ## Internal
 
 * `dplyr` is no longer a dependency (three trivial uses replaced by base R).
-  `utils` and `tools` are declared in `Imports`. Run `renv::snapshot()` to
-  reconcile `renv.lock`.
-* Test suite grown from 126 to 300+ expectations: seeded random data, a
+  `utils` and `tools` are declared in `Imports`, and `renv.lock` no longer
+  pins `dplyr` or its exclusive dependencies.
+* Test suite grown from 126 to 340+ expectations: seeded random data, a
   brute-force reference implementation as oracle, and invariance tests for
   parallel vs serial, X/Y swap and chunk size.
-* GitHub Actions `R CMD check` workflow (Linux, macOS, Windows).
+* GitHub Actions workflows for `R CMD check` (Linux, macOS, Windows) and lintr.
 
 # coreact 1.2.0
 
