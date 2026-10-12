@@ -14,7 +14,7 @@ resolve_xy_args <- function(val, arg_name) {
     stop(sprintf("Argument '%s' provided as a list must be length 1 or 2.", arg_name))
   } else {
     # If atomic vector (or NULL), recycle the same value for both X and Y
-    return(list(x = val, y = val))
+    list(x = val, y = val)
   }
 }
 
@@ -209,7 +209,7 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
                                name_y, name_x, length(in_y_not_x), fmt_list(in_y_not_x, cy)))
   }
 
-  return(msg)
+  msg
 }
 
 #' Preview Column Names and Indices
@@ -268,5 +268,5 @@ preview_cols <- function(path_x, path_y) {
   df$Name_Y[is.na(df$Name_Y)] <- ""
 
   print(df, row.names = FALSE, right = FALSE)
-  return(invisible(df))
+  invisible(df)
 }

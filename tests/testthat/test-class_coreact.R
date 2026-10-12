@@ -16,7 +16,7 @@ create_dummy_data <- function(n_rows = 5, n_cols = 3) {
     stringsAsFactors = FALSE
   )
 
-  return(list(mat = mat, meta = meta))
+  list(mat = mat, meta = meta)
 }
 
 test_that("new_coreact_data creates valid objects", {

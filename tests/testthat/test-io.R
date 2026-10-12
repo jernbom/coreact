@@ -3,7 +3,7 @@
 write_temp_tsv <- function(df) {
   tmp <- tempfile(fileext = ".tsv")
   write.table(df, file = tmp, sep = "\t", row.names = FALSE, quote = FALSE)
-  return(tmp)
+  tmp
 }
 
 # --- Helper Data Frame ---
