@@ -12,7 +12,7 @@ resolve_xy_args(val, arg_name)
 \item{arg_name}{String. Name of the argument for error reporting.}
 }
 \value{
-A list with elements `$x` and `$y`.
+A list with elements \verb{$x} and \verb{$y}.
 }
 \description{
 Handles the logic for arguments that can be provided as a single vector (applied to both)

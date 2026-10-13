@@ -1,11 +1,9 @@
-library(testthat)
-library(Matrix)
 
 # --- Helper to create temp TSV files ---
 write_temp_tsv <- function(df) {
   tmp <- tempfile(fileext = ".tsv")
   write.table(df, file = tmp, sep = "\t", row.names = FALSE, quote = FALSE)
-  return(tmp)
+  tmp
 }
 
 # --- Helper Data Frame ---
@@ -200,4 +198,83 @@ test_that("import_coreact_tsv validates uniqueness", {
     import_coreact_tsv(path, meta_cols = 1:2, feature_id = "GeneID"),
     "Constructed Feature IDs are not unique"
   )
+})
+
+test_that("import_coreact_tsv rejects non-numeric sample columns with a clear message", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
+
+  # Only GeneID is metadata, so the text column Symbol falls into the samples
+  expect_error(
+    import_coreact_tsv(path, meta_cols = "GeneID", feature_id = "GeneID", binarize = TRUE),
+    "Non-numeric columns: Symbol"
+  )
+})
+
+test_that("import_coreact_tsv rejects missing values", {
+  df <- create_df()
+  df$S2[2] <- NA
+  path <- write_temp_tsv(df)
+
+  expect_error(
+    import_coreact_tsv(path, meta_cols = 1:2, feature_id = 1, binarize = TRUE),
+    "1 missing \\(NA\\) values"
+  )
+})
+
+test_that("import_coreact_tsv rejects duplicate and overlapping column selections", {
+  df <- create_df()
+  path <- write_temp_tsv(df)
+
+  expect_error(
+    import_coreact_tsv(path, meta_cols = 1:2, sample_cols = c("S1", "S1", "S2"), binarize = TRUE),
+    "Duplicate sample columns requested: S1"
+  )
+  expect_error(
+    import_coreact_tsv(path, meta_cols = 1:2, sample_cols = c("Symbol", "S1"), binarize = TRUE),
+    "both metadata and sample columns: Symbol"
+  )
+})
+
+test_that("import_coreact_tsv always yields a dgCMatrix", {
+  # A square, symmetric 0/1 block: Matrix::Matrix() would return dsCMatrix
+  df <- data.frame(
+    id = c("a", "b", "c"),
+    S1 = c(1, 1, 0), S2 = c(1, 1, 1), S3 = c(0, 1, 1),
+    stringsAsFactors = FALSE
+  )
+  path <- write_temp_tsv(df)
+  obj <- import_coreact_tsv(path, meta_cols = 1, feature_id = 1)
+  expect_s4_class(obj$mat, "dgCMatrix")
+  expect_equal(as.matrix(obj$mat), matrix(c(1, 1, 0, 1, 1, 1, 0, 1, 1), 3,
+                                          dimnames = list(c("a", "b", "c"), c("S1", "S2", "S3"))))
+
+  # Diagonal block: would be ddiMatrix
+  df2 <- data.frame(id = c("a", "b"), S1 = c(1, 0), S2 = c(0, 1), stringsAsFactors = FALSE)
+  obj2 <- import_coreact_tsv(write_temp_tsv(df2), meta_cols = 1, feature_id = 1)
+  expect_s4_class(obj2$mat, "dgCMatrix")
+
+  # All-zero data is still a valid (empty) dgCMatrix
+  df3 <- data.frame(id = c("a", "b"), S1 = c(0, 0), S2 = c(0, 0), stringsAsFactors = FALSE)
+  obj3 <- import_coreact_tsv(write_temp_tsv(df3), meta_cols = 1, feature_id = 1)
+  expect_s4_class(obj3$mat, "dgCMatrix")
+  expect_equal(sum(obj3$mat), 0)
+})
+
+test_that("as_binary_sparse round-trips dense 0/1 matrices", {
+  withr::local_seed(8)
+  m <- matrix(rbinom(60, 1, 0.3), 6, 10,
+              dimnames = list(paste0("f", 1:6), paste0("s", 1:10)))
+  sp <- as_binary_sparse(m)
+  expect_s4_class(sp, "dgCMatrix")
+  expect_equal(as.matrix(sp), m)
+  expect_equal(dimnames(sp), dimnames(m))
+})
+
+test_that("binarize = TRUE thresholds at >= 1 and drops negatives", {
+  df <- create_df()
+  df$S1 <- c(-3, 0.5, 2)
+  path <- write_temp_tsv(df)
+  obj <- import_coreact_tsv(path, meta_cols = 1:2, feature_id = 1, binarize = TRUE)
+  expect_equal(as.vector(obj$mat[, "S1"]), c(0, 0, 1))
 })

@@ -7,7 +7,7 @@
 \method{print}{coreact_data}(x, ...)
 }
 \arguments{
-\item{x}{A `coreact_data` object.}
+\item{x}{A \code{coreact_data} object.}
 
 \item{...}{Additional arguments (ignored).}
 }

@@ -7,10 +7,11 @@
 is_binary_matrix(x)
 }
 \arguments{
-\item{x}{A matrix-like object (base `matrix` or `Matrix::sparseMatrix`).}
+\item{x}{A matrix-like object (base \code{matrix} or \code{Matrix::sparseMatrix}).}
 }
 \value{
-`TRUE` if all elements are 0 or 1; otherwise `FALSE`.
+\code{TRUE} if all elements are 0 or 1; otherwise \code{FALSE}. \code{NA} values
+count as non-binary.
 }
 \description{
 Efficiently determines whether a matrix (dense or sparse) contains only
@@ -19,14 +20,12 @@ values of 0 and 1.
 \details{
 This function is optimized for performance depending on the input type:
 \itemize{
-  \item **Sparse Matrices (`dgCMatrix`):** It inspects only the stored values
-  in the `@x` slot. Since implicit (non-stored) values are always 0, verifying
-  that explicit values are either 0 or 1 is sufficient. This avoids expanding
-  the matrix.
-  \item **Dense Matrices:** It uses `any()` with short-circuiting logic. The
-  scan stops immediately upon finding a value that is not 0 or 1.
+\item \strong{Sparse Matrices (\code{dgCMatrix}):} It inspects only the stored values
+in the \verb{@x} slot. Since implicit (non-stored) values are always 0, verifying
+that explicit values are either 0 or 1 is sufficient. This avoids expanding
+the matrix.
+\item \strong{Dense Matrices:} It uses \code{any()} with short-circuiting logic. The
+scan stops immediately upon finding a value that is not 0 or 1.
 }
 }
-\keyword{#}
-\keyword{@export}
 \keyword{internal}

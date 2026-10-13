@@ -46,16 +46,6 @@
       ],
       "Hash": "7dbe8933065523bfc227027091bf2b1f"
     },
-    "R6": {
-      "Package": "R6",
-      "Version": "2.6.1",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Requirements": [
-        "R"
-      ],
-      "Hash": "d4335fe7207f1c01ab8c41762f5840d4"
-    },
     "cli": {
       "Package": "cli",
       "Version": "3.6.5",
@@ -77,40 +67,6 @@
         "methods"
       ],
       "Hash": "df99cd4333ce592df5173d6ad39b5c14"
-    },
-    "dplyr": {
-      "Package": "dplyr",
-      "Version": "1.1.4",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "R6",
-        "cli",
-        "generics",
-        "glue",
-        "lifecycle",
-        "magrittr",
-        "methods",
-        "pillar",
-        "rlang",
-        "tibble",
-        "tidyselect",
-        "utils",
-        "vctrs"
-      ],
-      "Hash": "fedd9d00c2944ff00a0e2696ccf048ec"
-    },
-    "generics": {
-      "Package": "generics",
-      "Version": "0.1.4",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "methods"
-      ],
-      "Hash": "4b29bf698d0c7bdb9f1e4976e7ade41d"
     },
     "glue": {
       "Package": "glue",
@@ -226,22 +182,6 @@
       ],
       "Hash": "c55df870972551cac674b50cadb2d51f"
     },
-    "tidyselect": {
-      "Package": "tidyselect",
-      "Version": "1.2.1",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "cli",
-        "glue",
-        "lifecycle",
-        "rlang",
-        "vctrs",
-        "withr"
-      ],
-      "Hash": "829f27b9c4919c16b593794a6344d6c0"
-    },
     "utf8": {
       "Package": "utf8",
       "Version": "1.2.6",
@@ -265,18 +205,6 @@
         "rlang"
       ],
       "Hash": "c64e64d93489bb62bb8747bbb9e06c09"
-    },
-    "withr": {
-      "Package": "withr",
-      "Version": "3.0.2",
-      "Source": "Repository",
-      "Repository": "RSPM",
-      "Requirements": [
-        "R",
-        "grDevices",
-        "graphics"
-      ],
-      "Hash": "cc2d62c76458d425210d1eb1478b30b4"
     }
   }
 }

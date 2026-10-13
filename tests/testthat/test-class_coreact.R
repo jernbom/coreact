@@ -1,5 +1,3 @@
-library(testthat)
-library(Matrix)
 
 # --- Helper to create dummy data for tests ---
 create_dummy_data <- function(n_rows = 5, n_cols = 3) {
@@ -18,7 +16,7 @@ create_dummy_data <- function(n_rows = 5, n_cols = 3) {
     stringsAsFactors = FALSE
   )
 
-  return(list(mat = mat, meta = meta))
+  list(mat = mat, meta = meta)
 }
 
 test_that("new_coreact_data creates valid objects", {
@@ -64,11 +62,11 @@ test_that("new_coreact_data enforces identical row names", {
 
   # Case 1: Totally different names
   bad_meta <- d$meta
-  rownames(bad_meta) <- paste0("Wrong_", 1:nrow(bad_meta))
+  rownames(bad_meta) <- paste0("Wrong_", seq_len(nrow(bad_meta)))
   expect_error(new_coreact_data(d$mat, bad_meta), "must be identical")
 
   # Case 2: Same names, different order
-  rev_meta <- d$meta[nrow(d$meta):1, ]
+  rev_meta <- d$meta[rev(seq_len(nrow(d$meta))), ]
   expect_error(new_coreact_data(d$mat, rev_meta), "must be identical")
 })
 
@@ -102,4 +100,98 @@ test_that("cbind works correctly", {
   obj_diff <- new_coreact_data(d_diff$mat, d_diff$meta)
 
   expect_error(cbind.coreact_data(obj1, obj_diff), "Feature IDs")
+})
+
+test_that("new_coreact_data accepts a base matrix and converts to dgCMatrix", {
+  mat <- matrix(c(1, 0, 1, 1, 0, 0), nrow = 2,
+                dimnames = list(c("F1", "F2"), c("S1", "S2", "S3")))
+  meta <- data.frame(symbol = c("A", "B"), row.names = c("F1", "F2"))
+
+  obj <- new_coreact_data(mat, meta, name = "base")
+  expect_s4_class(obj$mat, "dgCMatrix")
+  expect_equal(as.matrix(obj$mat), mat)
+
+  # Logical matrices are fine too
+  obj_l <- new_coreact_data(mat == 1, meta, name = "logical")
+  expect_equal(as.matrix(obj_l$mat), mat)
+
+  # Non-binary / NA / character base matrices are rejected
+  expect_error(new_coreact_data(mat * 2, meta), "must be a binary matrix")
+  mat_na <- mat
+  mat_na[1, 1] <- NA
+  expect_error(new_coreact_data(mat_na, meta), "must not contain NA")
+  mat_chr <- matrix("1", 2, 3, dimnames = dimnames(mat))
+  expect_error(new_coreact_data(mat_chr, meta), "numeric or logical")
+
+  # Other argument validation
+  expect_error(new_coreact_data(mat, meta, name = c("a", "b")), "single string")
+  expect_error(new_coreact_data(mat, as.list(meta)), "must be a data.frame")
+  expect_error(new_coreact_data(list(), meta), "must be a Matrix")
+})
+
+test_that("dim(), nrow() and ncol() work on coreact_data", {
+  d <- create_dummy_data(n_rows = 7, n_cols = 4)
+  obj <- new_coreact_data(d$mat, d$meta)
+  expect_equal(dim(obj), c(7, 4))
+  expect_equal(nrow(obj), 7)
+  expect_equal(ncol(obj), 4)
+})
+
+test_that("subsetting to zero features yields a valid empty object", {
+  d <- create_dummy_data(n_rows = 5, n_cols = 3)
+  obj <- new_coreact_data(d$mat, d$meta)
+  empty <- obj[integer(0), ]
+  expect_s3_class(empty, "coreact_data")
+  expect_equal(nrow(empty), 0)
+  expect_equal(ncol(empty), 3)
+  expect_output(print(empty), "0 Features x 3 Samples")
+})
+
+test_that("subsetting accepts names, logicals and negative indices", {
+  d <- create_dummy_data(n_rows = 5, n_cols = 3)
+  obj <- new_coreact_data(d$mat, d$meta)
+
+  by_name <- obj[c("Gene_2", "Gene_4"), ]
+  expect_equal(rownames(by_name$mat), c("Gene_2", "Gene_4"))
+  expect_equal(by_name$meta$desc, c("Description 2", "Description 4"))
+
+  by_lgl <- obj[c(TRUE, FALSE, TRUE, FALSE, TRUE), ]
+  expect_equal(rownames(by_lgl$mat), c("Gene_1", "Gene_3", "Gene_5"))
+
+  by_neg <- obj[-1, "Sample_2"]
+  expect_equal(dim(by_neg), c(4, 1))
+  expect_equal(colnames(by_neg$mat), "Sample_2")
+})
+
+test_that("print method reports dimensions, features and metadata columns", {
+  d <- create_dummy_data(n_rows = 5, n_cols = 3)
+  obj <- new_coreact_data(d$mat, d$meta, name = "Printed")
+  out <- capture.output(ret <- print(obj))
+  expect_identical(ret, obj)
+  expect_match(out[1], "\\[Printed\\]")
+  expect_match(out[2], "5 Features x 3 Samples")
+  expect_true(any(grepl("Gene_1, Gene_2, Gene_3 \\.\\.\\.", out)))
+  expect_true(any(grepl("Metadata columns: id, desc", out)))
+})
+
+test_that("cbind validates classes and refuses duplicated sample names", {
+  d <- create_dummy_data(n_rows = 5, n_cols = 4)
+  obj <- new_coreact_data(d$mat, d$meta, name = "ObjA")
+
+  expect_error(cbind(obj, d$mat), "must be 'coreact_data' objects")
+
+  # Same object twice -> every sample name duplicated
+  expect_error(cbind(obj, obj), "sample names would be duplicated")
+
+  # Disjoint sample names combine; S3 dispatch through cbind() works
+  obj2 <- obj
+  colnames(obj2$mat) <- paste0("Other_", 1:4)
+  combined <- cbind(obj, obj2)
+  expect_equal(ncol(combined), 8)
+  expect_equal(colnames(combined$mat), c(paste0("Sample_", 1:4), paste0("Other_", 1:4)))
+  expect_equal(combined$name, "ObjA+ObjA")
+
+  # Single object is returned as is; nothing returns NULL
+  expect_identical(cbind.coreact_data(obj), obj)
+  expect_null(cbind.coreact_data())
 })

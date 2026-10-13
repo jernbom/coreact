@@ -2,28 +2,80 @@
 % Please edit documentation in R/workflow.R
 \name{run_coreact}
 \alias{run_coreact}
-\title{Run Coreact Engine (Internal)}
+\title{Run Coreact Engine on In-Memory Objects}
 \usage{
 run_coreact(
   data_x,
   data_y,
   n_cores = 1,
   chunk_size = NULL,
-  filter_config = list(min_intersection = 1)
+  effect_filters = list(),
+  max_p_val = NULL
 )
 }
 \arguments{
-\item{data_x, data_y}{coreact_data objects.}
+\item{data_x, data_y}{\code{coreact_data} objects (see \code{\link[=new_coreact_data]{new_coreact_data()}} and
+\code{\link[=import_coreact_tsv]{import_coreact_tsv()}}). Their sample columns must be identical and in
+the same order.}
 
-\item{n_cores}{Integer.}
+\item{n_cores}{Integer. Number of worker processes. Values above 1 use a
+fork cluster and are therefore only effective on Linux/macOS; on Windows
+the computation falls back to serial with a warning.}
 
-\item{chunk_size}{Integer.}
+\item{chunk_size}{Integer or \code{NULL}. Number of X features per work chunk.
+Auto-calculated from the data size and \code{n_cores} if \code{NULL}.}
 
-\item{filter_config}{List of thresholds.}
+\item{effect_filters}{Named list of minimum effect sizes. Recognised
+entries: \code{min_intersection} (minimum number of shared samples),
+\code{min_jaccard}, \code{min_overlap}. A missing entry or \code{0} disables that
+filter; the default \code{list()} keeps every pair.}
+
+\item{max_p_val}{Numeric or \code{NULL}. Pairs with a raw p-value above this
+are not returned. Set it to the FDR threshold you intend to apply after
+\code{\link[=adjust_fdr]{adjust_fdr()}}: since an adjusted p-value is never below the raw one,
+the set of significant pairs is unchanged and memory is saved.}
 }
 \value{
-A tibble of results.
+A tibble with one row per pair passing \code{effect_filters} and
+\code{max_p_val}, with columns \code{feature_x}, \code{feature_y}, \code{idx_x}, \code{idx_y},
+\code{intersection}, \code{size_x}, \code{size_y}, \code{union}, \code{jaccard}, \code{overlap},
+\code{p_val}. \verb{idx_*} are row indices into the corresponding input object.
+The attribute \code{n_pairs} holds the number of tested pairs
+(\code{nrow(data_x) * nrow(data_y)}), which \code{\link[=adjust_fdr]{adjust_fdr()}} uses as the size
+of the family. No multiple-testing adjustment is applied here.
 }
 \description{
-Run Coreact Engine (Internal)
+The computational core of the package: computes co-occurrence statistics
+for every pair of features between two \code{coreact_data} objects that share
+the same samples. \code{\link[=coreact_pipeline]{coreact_pipeline()}} wraps this with file import,
+feature selection, FDR adjustment and export; call \code{run_coreact()}
+directly when the data are already in memory, then \code{\link[=adjust_fdr]{adjust_fdr()}} to add
+adjusted p-values.
+}
+\details{
+For every pair \verb{(x, y)} the following are reported: \code{intersection}
+(samples positive for both), \code{size_x} / \code{size_y} (prevalence of each
+feature), \code{union}, \code{jaccard} (\code{intersection / union}), \code{overlap}
+(\code{intersection / min(size_x, size_y)}) and \code{p_val}, the one-sided
+hypergeometric probability of observing at least \code{intersection} shared
+samples given the two prevalences and the total number of samples
+(\code{phyper(intersection - 1, size_x, n_samples - size_x, size_y, lower.tail = FALSE)}). Jaccard and overlap are \code{NA} when their
+denominator is zero (features absent from every sample).
+
+The larger of the two feature sets is chunked and processed in parallel;
+if \code{data_y} is larger the two are swapped internally and the result columns
+are mapped back, so the output always refers to the inputs as supplied.
+}
+\examples{
+path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
+
+x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+y <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = c("protein_id", "gene_name"),
+                        name = "Y")
+
+res <- run_coreact(x, y)
+attr(res, "n_pairs")
+res <- adjust_fdr(res)
+head(res[order(res$p_adj), ])
 }

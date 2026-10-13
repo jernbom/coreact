@@ -1,6 +1,3 @@
-library(testthat)
-library(Matrix)
-library(data.table)
 
 # --- Helper to create a dummy S3 object for testing ---
 make_dummy_obj <- function() {
@@ -129,20 +126,22 @@ test_that("is_binary_matrix accurately detects binary data", {
   # --- Dense Matrices ---
 
   # Valid Binary
-  m_dense_good <- matrix(c(0, 1, 1, 0), nrow=2)
+  m_dense_good <- matrix(c(0, 1, 1, 0), nrow = 2)
   expect_true(is_binary_matrix(m_dense_good))
 
   # Invalid
-  m_dense_bad <- matrix(c(0, 2, 1, 0), nrow=2)
+  m_dense_bad <- matrix(c(0, 2, 1, 0), nrow = 2)
   expect_false(is_binary_matrix(m_dense_bad))
 })
 
 test_that("format_col_mismatch generates informative errors", {
   # Mock matrices (content doesn't matter, only column names)
-  m_ref <- matrix(0, ncol=2); colnames(m_ref) <- c("S1", "S2")
+  m_ref <- matrix(0, ncol = 2)
+  colnames(m_ref) <- c("S1", "S2")
 
   # 1. Missing Column
-  m_miss <- matrix(0, ncol=2); colnames(m_miss) <- c("S1", "S3")
+  m_miss <- matrix(0, ncol = 2)
+  colnames(m_miss) <- c("S1", "S3")
   msg_miss <- format_col_mismatch(m_ref, m_miss, "Ref", "Test")
 
   expect_match(msg_miss, "Sample identifiers.*are not identical")
@@ -152,7 +151,8 @@ test_that("format_col_mismatch generates informative errors", {
   expect_match(msg_miss, "Found in 'Test' but missing in 'Ref'.*S3.*Idx 2")
 
   # 2. Wrong Order
-  m_order <- matrix(0, ncol=2); colnames(m_order) <- c("S2", "S1")
+  m_order <- matrix(0, ncol = 2)
+  colnames(m_order) <- c("S2", "S1")
   msg_order <- format_col_mismatch(m_ref, m_order, "Ref", "Test")
 
   expect_match(msg_order, "same sample names, but in a different order")
@@ -164,9 +164,9 @@ test_that("preview_cols aligns and displays columns", {
 
   # Write dummy TSVs
   # File 1: A, B
-  write.table(data.frame(A=1, B=2), f1, sep="\t", row.names=FALSE)
+  write.table(data.frame(A = 1, B = 2), f1, sep = "\t", row.names = FALSE)
   # File 2: A, C, D (Longer, different cols)
-  write.table(data.frame(A=1, C=3, D=4), f2, sep="\t", row.names=FALSE)
+  write.table(data.frame(A = 1, C = 3, D = 4), f2, sep = "\t", row.names = FALSE)
 
   # Capture the invisible return
   # Using capture.output to silence the print during testing
@@ -187,4 +187,82 @@ test_that("preview_cols aligns and displays columns", {
 
   # Error check
   expect_error(preview_cols("nonexistent", f2), "File not found")
+})
+
+test_that("filter_by_prevalence validates the threshold and reports counts", {
+  obj <- make_dummy_obj()
+
+  expect_error(filter_by_prevalence(obj, NA), "single non-NA number")
+  expect_error(filter_by_prevalence(obj, "0.5"), "single non-NA number")
+  expect_error(filter_by_prevalence(obj, c(0.1, 0.2)), "single non-NA number")
+
+  expect_message(filter_by_prevalence(obj, 0.5), "keeping 3 of 5 features")
+  expect_message(filter_by_prevalence(obj, 3), "\\(>= 3 samples\\)")
+  # Zero threshold is a no-op and stays silent
+  expect_silent(filter_by_prevalence(obj, 0))
+})
+
+test_that("write_metadata_sidecar handles dotted directories and multi-dot names", {
+  obj <- make_dummy_obj()
+  tmp <- withr::local_tempdir()
+  dotted_dir <- file.path(tmp, "run.v2")
+  dir.create(dotted_dir)
+
+  # No extension in the file name, but a dot in the directory
+  out_noext <- file.path(dotted_dir, "results")
+  suppressMessages(write_metadata_sidecar(obj, "F1", out_noext, "x"))
+  expect_true(file.exists(file.path(dotted_dir, "results_metadata_x.tsv")))
+
+  # Multi-dot file name: suffix goes before the final extension
+  out_multi <- file.path(dotted_dir, "results.final.txt")
+  suppressMessages(write_metadata_sidecar(obj, "F1", out_multi, "y"))
+  expect_true(file.exists(file.path(dotted_dir, "results.final_metadata_y.txt")))
+
+  # Empty keep_ids -> header-only sidecar with the metadata columns
+  suppressMessages(write_metadata_sidecar(obj, character(0), out_noext, "z"))
+  df <- data.table::fread(file.path(dotted_dir, "results_metadata_z.tsv"))
+  expect_equal(nrow(df), 0)
+  expect_named(df, c("feature_id", "id", "symbol"))
+})
+
+test_that("is_binary_matrix handles pattern, logical and NA-containing matrices", {
+  m <- Matrix::Matrix(c(1, 0, 1, 1), 2, sparse = TRUE)
+  expect_true(is_binary_matrix(m))
+  expect_true(is_binary_matrix(m > 0))                       # lgCMatrix
+  expect_true(is_binary_matrix(methods::as(m, "nMatrix")))   # pattern matrix, no @x
+  expect_true(is_binary_matrix(Matrix::Matrix(c(1, 0, 1, 1), 2, sparse = FALSE))) # dgeMatrix
+  expect_false(is_binary_matrix(matrix(c(1, NA), 1)))
+  expect_true(is_binary_matrix(matrix(c(TRUE, FALSE), 1)))
+})
+
+test_that("resolve_xy_args passes NULL through for both sides", {
+  res <- resolve_xy_args(NULL, "arg")
+  expect_null(res$x)
+  expect_null(res$y)
+})
+
+test_that("filter_by_prevalence applies an upper bound", {
+  obj <- make_dummy_obj() # prevalences F1..F5 = 4, 3, 2, 1, 0 of 4 samples
+
+  # Absolute upper bound
+  expect_message(res <- filter_by_prevalence(obj, 0, 2), "0 to 2 samples")
+  expect_equal(rownames(res$mat), c("F3", "F4", "F5"))
+
+  # Fractional upper bound: 0.6 * 4 = 2.4 -> at most 2 samples
+  res_f <- suppressMessages(filter_by_prevalence(obj, 1, 0.6))
+  expect_equal(rownames(res_f$mat), c("F3", "F4"))
+
+  # Both bounds
+  res_b <- suppressMessages(filter_by_prevalence(obj, 0.5, 3))
+  expect_equal(rownames(res_b$mat), c("F2", "F3"))
+
+  # Empty interval and empty result
+  expect_error(filter_by_prevalence(obj, 3, 2), "bounds are empty")
+  expect_equal(rownames(suppressMessages(filter_by_prevalence(obj, 0, 0))$mat), "F5")
+  expect_error(filter_by_prevalence(obj, 5, 6), "removed all features")
+  expect_error(filter_by_prevalence(obj, 0, "2"), "Maximum prevalence")
+
+  # NULL upper bound is the lower-bound-only behaviour
+  expect_equal(suppressMessages(filter_by_prevalence(obj, 3, NULL)),
+               suppressMessages(filter_by_prevalence(obj, 3)))
 })

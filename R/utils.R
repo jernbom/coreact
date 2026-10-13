@@ -14,38 +14,59 @@ resolve_xy_args <- function(val, arg_name) {
     stop(sprintf("Argument '%s' provided as a list must be length 1 or 2.", arg_name))
   } else {
     # If atomic vector (or NULL), recycle the same value for both X and Y
-    return(list(x = val, y = val))
+    list(x = val, y = val)
   }
 }
 
-#' Filter Coreact Data by Prevalence (Internal)
+#' Filter Coreact Data by Marginal Prevalence (Internal)
 #'
-#' Filters a coreact_data object based on row prevalence.
-#' Automatically detects if the threshold is a percentage (< 1) or absolute count (>= 1).
+#' Retains the features of a coreact_data object whose prevalence (number of
+#' positive samples) lies within `[min_thresh, max_thresh]`. Each threshold is
+#' a fraction of the samples if `< 1` and an absolute count if `>= 1`.
 #'
 #' @param obj A `coreact_data` object.
-#' @param thresh Numeric. The filter threshold.
+#' @param min_thresh Numeric. Minimum prevalence; `0` disables the lower bound.
+#' @param max_thresh Numeric or `NULL`. Maximum prevalence; `NULL` disables
+#'   the upper bound.
 #' @return A subsetted `coreact_data` object.
 #' @keywords internal
-filter_by_prevalence <- function(obj, thresh) {
-  if (thresh <= 0) return(obj)
+filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
+  if (!is.numeric(min_thresh) || length(min_thresh) != 1 || is.na(min_thresh)) {
+    stop("Minimum prevalence threshold must be a single non-NA number.")
+  }
+  if (!is.null(max_thresh) &&
+        (!is.numeric(max_thresh) || length(max_thresh) != 1 || is.na(max_thresh))) {
+    stop("Maximum prevalence threshold must be NULL or a single non-NA number.")
+  }
+  if (min_thresh <= 0 && is.null(max_thresh)) return(obj)
 
-  # Determine cutoff: Absolute vs Percentage
-  if (thresh < 1) {
-    cutoff <- ceiling(thresh * ncol(obj$mat))
-  } else {
-    cutoff <- thresh
+  n_samp <- ncol(obj$mat)
+
+  # Lower cutoff: fraction -> smallest count reaching it; count -> as is
+  lo <- if (min_thresh < 1) ceiling(min_thresh * n_samp) else min_thresh
+  # Upper cutoff: fraction -> largest count not exceeding it; count -> as is
+  hi <- if (is.null(max_thresh)) Inf else if (max_thresh < 1) floor(max_thresh * n_samp) else max_thresh
+
+  if (hi < lo) {
+    stop(sprintf("[%s] Prevalence bounds are empty: min %s > max %s samples.",
+                 obj$name, format(lo), format(hi)))
   }
 
   prev <- Matrix::rowSums(obj$mat > 0)
-  keep <- prev >= cutoff
+  keep <- prev >= lo & prev <= hi
+  n_keep <- sum(keep)
 
-  if (sum(keep) == 0) {
-    stop(sprintf("Filter removed all features from %s (Cutoff: %s).", obj$name, cutoff))
+  bounds <- if (is.finite(hi)) sprintf("%s to %s", format(lo), format(hi)) else sprintf(">= %s", format(lo))
+
+  if (n_keep == 0) {
+    stop(sprintf("[%s] Filter removed all features (prevalence %s samples).", obj$name, bounds))
   }
 
+  message(sprintf("[%s] Prevalence filter (%s samples): keeping %d of %d features.",
+                  obj$name, bounds, n_keep, length(keep)))
+
   # Uses the S3 subsetting method '[.coreact_data' defined in class_coreact.R
-  return(obj[keep, ])
+  obj[keep, ]
 }
 
 #' Write Sidecar Metadata (Internal)
@@ -61,10 +82,10 @@ filter_by_prevalence <- function(obj, thresh) {
 #' @keywords internal
 write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
   # Construct filename: results.tsv -> results_metadata_x.tsv
-  # This regex inserts the suffix before the last extension
-  if (grepl("\\.", basename(out_path))) {
+  ext <- tools::file_ext(out_path)
+  if (nzchar(ext)) {
     # If extension exists, insert suffix before it
-    meta_file <- sub("(\\.[^.]+)$", sprintf("_metadata_%s\\1", suffix), out_path)
+    meta_file <- sprintf("%s_metadata_%s.%s", tools::file_path_sans_ext(out_path), suffix, ext)
   } else {
     # If no extension, append suffix + .tsv default
     meta_file <- sprintf("%s_metadata_%s.tsv", out_path, suffix)
@@ -77,13 +98,14 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
   to_keep <- all_ids %in% keep_ids
 
   # Create the export table: Feature ID first
-  export_df <- tibble::tibble(feature_id = all_ids[to_keep])
+  export_df <- data.frame(feature_id = all_ids[to_keep], stringsAsFactors = FALSE)
 
   # Bind metadata columns if they exist
   if (!is.null(obj$meta) && ncol(obj$meta) > 0) {
     # Note: obj$meta is expected to be row-aligned with obj$mat
     meta_subset <- obj$meta[to_keep, , drop = FALSE]
-    export_df <- dplyr::bind_cols(export_df, meta_subset)
+    rownames(meta_subset) <- NULL
+    export_df <- cbind(export_df, meta_subset)
   }
 
   message(sprintf("Writing %s metadata (%d features) to %s ...", suffix, nrow(export_df), meta_file))
@@ -114,21 +136,24 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
 #'
 #' @param x A matrix-like object (base `matrix` or `Matrix::sparseMatrix`).
 #'
-#' @return `TRUE` if all elements are 0 or 1; otherwise `FALSE`.
+#' @return `TRUE` if all elements are 0 or 1; otherwise `FALSE`. `NA` values
+#'   count as non-binary.
 #'
 #' @keywords internal
-#' # @export
 is_binary_matrix <- function(x) {
+  if (inherits(x, "nsparseMatrix")) {
+    # Pattern matrices store no values: every entry is TRUE/FALSE by construction
+    return(TRUE)
+  }
   if (inherits(x, "sparseMatrix")) {
     # Check only stored values (@x slot)
     # If a value is stored, it must be 0 or 1.
     # (Implicit values are always 0, which is valid).
     return(all(x@x %in% c(0, 1)))
-  } else {
-    # Short-circuit check for dense matrices
-    # Returns FALSE immediately if a non-0/1 value is found
-    return(!any(x != 0 & x != 1))
   }
+  # Dense (base matrix or dense Matrix): NA is neither 0 nor 1
+  vals <- as.vector(x)
+  !anyNA(vals) && !any(vals != 0 & vals != 1)
 }
 
 #' Format Column Mismatch Error (Internal Helper)
@@ -172,7 +197,8 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
   }
 
   # 4. Append details
-  msg <- paste0(msg, "If using 'sample_cols', ensure both datasets resolve to the exact same sample set.\nDetails:\n")
+  msg <- paste0(msg, "If using 'sample_cols', ensure both datasets resolve to the exact same sample set.\n",
+                "Details:\n")
 
   if (length(in_x_not_y) > 0) {
     msg <- paste0(msg, sprintf("Found in '%s' but missing in '%s' (%d cols): %s\n",
@@ -183,7 +209,7 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
                                name_y, name_x, length(in_y_not_x), fmt_list(in_y_not_x, cy)))
   }
 
-  return(msg)
+  msg
 }
 
 #' Preview Column Names and Indices
@@ -199,6 +225,9 @@ format_col_mismatch <- function(mat_x, mat_y, name_x, name_y) {
 #' @return A data.frame showing indices and column names for both files side-by-side.
 #'   Returns invisibly; prints to console by default.
 #' @export
+#' @examples
+#' preview_cols(system.file("extdata", "input_x.tsv", package = "coreact"),
+#'              system.file("extdata", "input_y.tsv", package = "coreact"))
 preview_cols <- function(path_x, path_y) {
 
   if (!file.exists(path_x)) stop("File not found: ", path_x)
@@ -239,5 +268,5 @@ preview_cols <- function(path_x, path_y) {
   df$Name_Y[is.na(df$Name_Y)] <- ""
 
   print(df, row.names = FALSE, right = FALSE)
-  return(invisible(df))
+  invisible(df)
 }

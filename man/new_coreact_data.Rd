@@ -7,18 +7,27 @@
 new_coreact_data(mat, meta, name = "unknown")
 }
 \arguments{
-\item{mat}{A sparse binary matrix (dgCMatrix) containing counts/values.
-Rows are features, columns are samples.}
+\item{mat}{A binary (0/1) matrix with features as rows and samples as
+columns. Preferably a sparse \code{dgCMatrix}; a base \code{matrix} is accepted and
+converted to \code{dgCMatrix}.}
 
 \item{meta}{A data.frame containing feature metadata (e.g., Gene Symbols).
-Number of rows must match `mat`.}
+Number of rows must match \code{mat}.}
 
 \item{name}{String. An identifier for the dataset.}
 }
 \value{
-An S3 object of class `coreact_data`.
+An S3 object of class \code{coreact_data}: a list with elements \code{mat}
+(the sparse matrix), \code{meta} (the metadata data.frame) and \code{name}.
 }
 \description{
-Internal constructor to create a `coreact_data` object.
+Internal constructor to create a \code{coreact_data} object.
 Strict validation: Row names must be present, unique, and identical in both inputs.
+}
+\examples{
+mat <- matrix(c(1, 0, 1, 1, 0, 0), nrow = 2,
+              dimnames = list(c("F1", "F2"), c("S1", "S2", "S3")))
+meta <- data.frame(symbol = c("A", "B"), row.names = c("F1", "F2"))
+obj <- new_coreact_data(mat, meta, name = "demo")
+obj
 }
