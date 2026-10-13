@@ -15,3 +15,4 @@ inst/doc
 # Local outputs from the README example and scratch work
 results/
 tests/sandbox/
+tests/testthat/testthat-problems.rds
