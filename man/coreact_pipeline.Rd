@@ -22,12 +22,16 @@ coreact_pipeline(
 )
 }
 \arguments{
-\item{paths}{Character vector (length 2). Paths to input TSV files (X and Y).}
+\item{paths}{Character vector (length 1 or 2). Paths to input TSV files.
+Two paths compare X with Y; one path compares a library with itself, and
+every other per-dataset argument must then be a single value. See
+Within-library comparison below.}
 
 \item{out_path}{Path for result file.}
 
-\item{names}{Character vector (length 2). Names for datasets X and Y.
-Default \code{c("Input_X", "Input_Y")}.}
+\item{names}{Character vector. Names for the datasets: length 2 for two
+inputs (default \code{c("Input_X", "Input_Y")}), length 1 for one input
+(default \code{"Input"}).}
 
 \item{meta_cols}{List or Vector. Names or indices of metadata columns.
 If a vector, applied to both X and Y.
@@ -72,10 +76,12 @@ The default applies no effect-size filter.}
 Invisibly, the tibble of results that was written to \code{out_path}
 (including the \code{p_adj} column). Files are written as a side effect: the
 main results table at \code{out_path} and two metadata sidecars
-(\verb{*_metadata_x.tsv}, \verb{*_metadata_y.tsv}) next to it.
+(\verb{*_metadata_x.tsv}, \verb{*_metadata_y.tsv}) next to it. Within a library the
+two sidecars hold the features appearing as \code{feature_x} and as
+\code{feature_y} respectively, which differ at the ends of the index order.
 }
 \description{
-Reads two TSV files and runs the three-step co-reactivity procedure:
+Reads one or two TSV files and runs the three-step co-reactivity procedure:
 feature selection on marginal prevalence, significance testing of every
 retained feature pair with FDR control, and effect-size filtering of the
 significant pairs. Results and metadata sidecars are written to disk.
@@ -105,6 +111,19 @@ than with \code{n_x * n_y}. Effect-size filters are a convenience for keeping
 output sizes manageable, and with a moderate \code{fdr_threshold} they are
 usually unnecessary.
 }
+\section{Within-library comparison}{
+
+A single \code{paths} entry compares the features of one library with each other.
+Each unordered pair is reported once and no feature is paired with itself, so
+step 2 adjusts over \code{n * (n - 1) / 2} pairs rather than \code{n^2}; see
+\code{\link[=run_coreact]{run_coreact()}} for why. With one input, \code{names}, \code{meta_cols},
+\code{sample_cols}, \code{feature_ids}, \code{binarize}, \code{min_prevalence} and
+\code{max_prevalence} each take a single value.
+
+Passing the same file twice is refused, whether as the same path or as a copy
+under another name that imports to the same matrix.
+}
+
 \examples{
 path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
 path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
@@ -122,4 +141,15 @@ res <- coreact_pipeline(
 )
 head(res)
 list.files(tempdir(), pattern = "^interactions")
+
+# Within one library: a single path, single-valued arguments
+out_within <- file.path(tempdir(), "within.tsv")
+res_within <- coreact_pipeline(
+  paths = path_x,
+  out_path = out_within,
+  meta_cols = c("u_pep_id", "pep_nr", "protein_id", "gene_name"),
+  feature_ids = "u_pep_id",
+  fdr_threshold = 1
+)
+all(res_within$idx_x < res_within$idx_y)
 }

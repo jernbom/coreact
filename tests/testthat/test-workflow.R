@@ -381,7 +381,7 @@ test_that("coreact_pipeline handles empty results gracefully", {
 
   expect_warning(
     res <- coreact_pipeline(
-      paths = c(p1, p1),
+      paths = p1,
       out_path = out_empty,
       meta_cols = 1, feature_ids = 1,
       min_prevalence = 0,
@@ -411,7 +411,7 @@ test_that("coreact_pipeline creates missing output directories", {
   out_path <- file.path(tmp, "nested", "deeper", "res.tsv")
 
   suppressWarnings(suppressMessages(
-    coreact_pipeline(paths = c(path_x, path_x), out_path = out_path,
+    coreact_pipeline(paths = path_x, out_path = out_path,
                      meta_cols = 1:2, feature_ids = 1, fdr_threshold = NULL)
   ))
   expect_true(file.exists(out_path))

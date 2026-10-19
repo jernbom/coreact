@@ -33,6 +33,6 @@ conservative for the rest.
 mat <- matrix(c(1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0), nrow = 3, byrow = TRUE,
               dimnames = list(c("A", "B", "C"), paste0("S", 1:4)))
 obj <- new_coreact_data(mat, data.frame(row.names = rownames(mat)))
-res <- adjust_fdr(run_coreact(obj, obj))
+res <- adjust_fdr(run_coreact(obj))
 res[, c("feature_x", "feature_y", "p_val", "p_adj")]
 }

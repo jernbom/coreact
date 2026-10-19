@@ -91,7 +91,9 @@ import_coreact_tsv <- function(path,
 
     # feature_id must be within meta_cols
     if (!all(feat_idx %in% meta_idx)) {
-      stop(sprintf("[%s] Error: 'feature_id' columns must be present in 'meta_cols'.", name))
+      stop(sprintf(paste0("[%s] Error: 'feature_id' columns must be present in 'meta_cols' ",
+                          "(set through 'feature_ids' when calling coreact_pipeline())."),
+                   name))
     }
 
     # Construct the ID vector
