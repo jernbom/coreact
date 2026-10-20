@@ -1,4 +1,4 @@
-# coreact (development version)
+# coreact 1.4.0
 
 ## New features
 

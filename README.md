@@ -91,11 +91,19 @@ sig <- res[res$p_adj <= 0.05, ]
 
 `adjust_fdr()` uses the number of tested pairs as the size of the family, so pruning inside the engine (`max_p_val`, `effect_filters`) never changes the adjusted p-values of the significant pairs.
 
+### Within a single library
+
+To compare the features of one library with each other, supply it once: `run_coreact(x)`, or a single entry in `paths`. Each pair is then tested once and no feature is paired with itself, so the family is `n * (n - 1) / 2` rather than `n^2`. Supplying the same library twice is an error.
+
+```r
+res <- adjust_fdr(run_coreact(x))  # all(res$idx_x < res$idx_y) is TRUE
+```
+
 `preview_cols(path_x, path_y)` prints the column headers of both files side by side, which helps when choosing `meta_cols`, `sample_cols` and `feature_ids` by index.
 
 ## 📄 Input Data Format
 
-`coreact` expects two TSV files (X and Y). The structure must be consistent:
+`coreact` expects two TSV files (X and Y), or one for a within-library comparison. The structure must be consistent:
 
 1. **Metadata Columns:** Text or IDs (must be specified in `meta_cols`).
 2. **Sample Columns:** Binary data (0 or 1), numeric and without missing values. Count data can be thresholded at `>= 1` with `binarize = TRUE`.
