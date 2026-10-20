@@ -6,7 +6,7 @@
 \usage{
 run_coreact(
   data_x,
-  data_y,
+  data_y = NULL,
   n_cores = 1,
   chunk_size = NULL,
   effect_filters = list(),
@@ -16,7 +16,9 @@ run_coreact(
 \arguments{
 \item{data_x, data_y}{\code{coreact_data} objects (see \code{\link[=new_coreact_data]{new_coreact_data()}} and
 \code{\link[=import_coreact_tsv]{import_coreact_tsv()}}). Their sample columns must be identical and in
-the same order.}
+the same order. Omit \code{data_y} to compare a library with itself; see
+Within-library comparison below. Supplying the same data as both
+arguments is an error.}
 
 \item{n_cores}{Integer. Number of worker processes. Values above 1 use a
 fork cluster and are therefore only effective on Linux/macOS; on Windows
@@ -41,13 +43,15 @@ A tibble with one row per pair passing \code{effect_filters} and
 \code{intersection}, \code{size_x}, \code{size_y}, \code{union}, \code{jaccard}, \code{overlap},
 \code{p_val}. \verb{idx_*} are row indices into the corresponding input object.
 The attribute \code{n_pairs} holds the number of tested pairs
-(\code{nrow(data_x) * nrow(data_y)}), which \code{\link[=adjust_fdr]{adjust_fdr()}} uses as the size
+(\code{nrow(data_x) * nrow(data_y)}, or \code{n * (n - 1) / 2} when \code{data_y} is
+omitted), which \code{\link[=adjust_fdr]{adjust_fdr()}} uses as the size
 of the family. No multiple-testing adjustment is applied here.
 }
 \description{
 The computational core of the package: computes co-occurrence statistics
 for every pair of features between two \code{coreact_data} objects that share
-the same samples. \code{\link[=coreact_pipeline]{coreact_pipeline()}} wraps this with file import,
+the same samples, or between the features of a single object.
+\code{\link[=coreact_pipeline]{coreact_pipeline()}} wraps this with file import,
 feature selection, FDR adjustment and export; call \code{run_coreact()}
 directly when the data are already in memory, then \code{\link[=adjust_fdr]{adjust_fdr()}} to add
 adjusted p-values.
@@ -66,6 +70,26 @@ The larger of the two feature sets is chunked and processed in parallel;
 if \code{data_y} is larger the two are swapped internally and the result columns
 are mapped back, so the output always refers to the inputs as supplied.
 }
+\section{Within-library comparison}{
+
+Omitting \code{data_y} compares the features of \code{data_x} with each other. Each
+unordered pair is then reported once, as \code{idx_x < idx_y}, and no feature is
+paired with itself: the family is \code{n * (n - 1) / 2} rather than \code{n^2}. Which
+feature of a pair is \code{x} and which is \code{y} follows index order and carries no
+other meaning.
+
+Reporting both orientations would enter the same hypothesis in the family
+twice, and a feature paired with itself co-occurs perfectly by construction,
+so the self-pairs would occupy the top of the ranking without being
+findings. Both inflate the family that \code{\link[=adjust_fdr]{adjust_fdr()}} corrects over.
+
+Supplying one library as both \code{data_x} and \code{data_y} is refused, because the
+duplicate pairs cannot be removed reliably once two objects are involved. A
+copy of the same data under a different name cannot always be recognised,
+so when the two inputs share features that are identical across all samples
+a warning says how many and what it costs.
+}
+
 \examples{
 path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
 path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
@@ -78,4 +102,9 @@ res <- run_coreact(x, y)
 attr(res, "n_pairs")
 res <- adjust_fdr(res)
 head(res[order(res$p_adj), ])
+
+# Within a single library: each pair once, no feature against itself
+res_within <- run_coreact(x)
+attr(res_within, "n_pairs")           # nrow(x) * (nrow(x) - 1) / 2
+all(res_within$idx_x < res_within$idx_y)
 }

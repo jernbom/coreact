@@ -156,6 +156,66 @@ is_binary_matrix <- function(x) {
   !anyNA(vals) && !any(vals != 0 & vals != 1)
 }
 
+#' Warn When Two Inputs Share Identical Features (Internal)
+#'
+#' @description
+#' Detects the case where two inputs are really one library, which
+#' [run_coreact()] cannot refuse because the two objects are not identical:
+#' a copy of the same file under another name, or one library filtered twice
+#' with different prevalence bounds.
+#'
+#' @details
+#' Every feature present and identical on both sides is paired with itself,
+#' and every two of them are paired twice, once in each orientation. Both
+#' enter the family that [adjust_fdr()] corrects over, so the adjusted
+#' p-values are computed over more hypotheses than exist.
+#'
+#' A feature counts only if its prevalence is at least 2. Under row-number
+#' feature IDs two unrelated libraries can match on a single positive sample
+#' by chance, and features absent from every sample are identical trivially.
+#' Only the shared IDs are compared, so the cost is proportional to the
+#' overlap and nil when the two inputs share no IDs.
+#'
+#' @param data_x,data_y `coreact_data` objects.
+#' @return `NULL`, invisibly. Emits a warning when the count is positive.
+#' @keywords internal
+warn_shared_identical_features <- function(data_x, data_y) {
+  shared <- intersect(rownames(data_x$mat), rownames(data_y$mat))
+  if (length(shared) == 0) return(invisible(NULL))
+  if (ncol(data_x$mat) != ncol(data_y$mat)) return(invisible(NULL))
+
+  mat_x <- data_x$mat[shared, , drop = FALSE]
+  mat_y <- data_y$mat[shared, , drop = FALSE]
+
+  # Sparse difference: a row is identical when every entry cancels
+  same <- Matrix::rowSums(abs(mat_x - mat_y)) == 0
+  informative <- Matrix::rowSums(mat_x > 0) >= 2
+  hits <- shared[same & informative]
+  n_hits <- length(hits)
+  if (n_hits == 0) return(invisible(NULL))
+
+  examples <- paste(utils::head(hits, 3), collapse = ", ")
+  if (n_hits > 3) examples <- paste0(examples, ", ...")
+
+  # Subsetting a coreact_data object appends "_subset" to its name, so the two
+  # inputs can carry the same name; name them once when they do.
+  subject <- if (identical(data_x$name, data_y$name)) {
+    sprintf("Both inputs ('%s')", data_x$name)
+  } else {
+    sprintf("'%s' and '%s'", data_x$name, data_y$name)
+  }
+  counted <- if (n_hits == 1) "1 feature that is" else sprintf("%d features that are", n_hits)
+
+  warning(sprintf(
+    paste0("%s share %s identical across all samples (%s). Each is paired with itself, ",
+           "and each two of them are paired twice, inside a family of %s pairs. If these ",
+           "inputs are one library, pass it as 'data_x' alone and every pair is reported once."),
+    subject, counted, examples,
+    format(as.numeric(nrow(data_x$mat)) * as.numeric(nrow(data_y$mat)), scientific = FALSE)
+  ), call. = FALSE)
+  invisible(NULL)
+}
+
 #' Format Column Mismatch Error (Internal Helper)
 #'
 #' @param mat_x Matrix X

@@ -19,6 +19,10 @@
 #'   than the raw p-value, dropping pairs with `p_val > fdr_threshold` cannot
 #'   change which pairs are significant at that threshold; it only saves
 #'   memory.
+#' @param upper_triangle Logical. For a within-library comparison, where X and
+#'   Y are the same matrix, keep only pairs with `idx_x < idx_y`. That drops
+#'   the self-pairs (a feature against itself) and one of each mirrored pair,
+#'   which carry the same hypothesis with x and y exchanged.
 #'
 #' @details
 #' The Jaccard index is undefined when both features are absent from every
@@ -35,7 +39,8 @@ worker_chunk_calc <- function(idx_x_chunk,
                               prev_y,
                               n_samples,
                               config,
-                              max_p_val = NULL) {
+                              max_p_val = NULL,
+                              upper_triangle = FALSE) {
 
   # --- 1. Intersection (Always Matrix) ---
   # BLAS optimized dense matrix mult (Cross-product)
@@ -43,6 +48,14 @@ worker_chunk_calc <- function(idx_x_chunk,
 
   # Initialize Mask (Logical matrix of pairs to keep)
   keep_mask <- matrix(TRUE, nrow = nrow(mat_int), ncol = ncol(mat_int))
+
+  # Filter 0: within-library comparison keeps one orientation per pair.
+  # Applied first so that a chunk lying entirely on or below the diagonal
+  # exits before any p-value is computed.
+  if (upper_triangle) {
+    keep_mask <- keep_mask & outer(idx_x_chunk, seq_len(ncol(mat_int)), "<")
+    if (!any(keep_mask)) return(NULL)
+  }
 
   # A threshold of 0 keeps everything, so skip the work
   thr <- function(name) {

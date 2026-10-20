@@ -1,14 +1,18 @@
 #' Run Full Coreact Pipeline (Disc-to-Disc)
 #'
-#' Reads two TSV files and runs the three-step co-reactivity procedure:
+#' Reads one or two TSV files and runs the three-step co-reactivity procedure:
 #' feature selection on marginal prevalence, significance testing of every
 #' retained feature pair with FDR control, and effect-size filtering of the
 #' significant pairs. Results and metadata sidecars are written to disk.
 #'
-#' @param paths Character vector (length 2). Paths to input TSV files (X and Y).
+#' @param paths Character vector (length 1 or 2). Paths to input TSV files.
+#'    Two paths compare X with Y; one path compares a library with itself, and
+#'    every other per-dataset argument must then be a single value. See
+#'    Within-library comparison below.
 #' @param out_path Path for result file.
-#' @param names Character vector (length 2). Names for datasets X and Y.
-#'    Default `c("Input_X", "Input_Y")`.
+#' @param names Character vector. Names for the datasets: length 2 for two
+#'    inputs (default `c("Input_X", "Input_Y")`), length 1 for one input
+#'    (default `"Input"`).
 #' @param meta_cols List or Vector. Names or indices of metadata columns.
 #'    If a vector, applied to both X and Y.
 #'    If a list of length 2, `meta_cols[[1]]` is used for X, `meta_cols[[2]]` for Y.
@@ -62,10 +66,23 @@
 #' output sizes manageable, and with a moderate `fdr_threshold` they are
 #' usually unnecessary.
 #'
+#' @section Within-library comparison:
+#' A single `paths` entry compares the features of one library with each other.
+#' Each unordered pair is reported once and no feature is paired with itself, so
+#' step 2 adjusts over `n * (n - 1) / 2` pairs rather than `n^2`; see
+#' [run_coreact()] for why. With one input, `names`, `meta_cols`,
+#' `sample_cols`, `feature_ids`, `binarize`, `min_prevalence` and
+#' `max_prevalence` each take a single value.
+#'
+#' Passing the same file twice is refused, whether as the same path or as a copy
+#' under another name that imports to the same matrix.
+#'
 #' @return Invisibly, the tibble of results that was written to `out_path`
 #'   (including the `p_adj` column). Files are written as a side effect: the
 #'   main results table at `out_path` and two metadata sidecars
-#'   (`*_metadata_x.tsv`, `*_metadata_y.tsv`) next to it.
+#'   (`*_metadata_x.tsv`, `*_metadata_y.tsv`) next to it. Within a library the
+#'   two sidecars hold the features appearing as `feature_x` and as
+#'   `feature_y` respectively, which differ at the ends of the index order.
 #' @export
 #' @examples
 #' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
@@ -84,6 +101,17 @@
 #' )
 #' head(res)
 #' list.files(tempdir(), pattern = "^interactions")
+#'
+#' # Within one library: a single path, single-valued arguments
+#' out_within <- file.path(tempdir(), "within.tsv")
+#' res_within <- coreact_pipeline(
+#'   paths = path_x,
+#'   out_path = out_within,
+#'   meta_cols = c("u_pep_id", "pep_nr", "protein_id", "gene_name"),
+#'   feature_ids = "u_pep_id",
+#'   fdr_threshold = 1
+#' )
+#' all(res_within$idx_x < res_within$idx_y)
 coreact_pipeline <- function(paths,
                              out_path,
                              names = c("Input_X", "Input_Y"),
@@ -100,11 +128,46 @@ coreact_pipeline <- function(paths,
                              chunk_size = NULL) {
 
   # --- 1. Argument Validation & Expansion ---
-  if (!is.character(paths) || length(paths) != 2) {
-    stop("Argument 'paths' must be a character vector of length 2.")
+  if (!is.character(paths) || !length(paths) %in% 1:2) {
+    stop("Argument 'paths' must be a character vector of length 1 or 2.")
   }
-  if (!is.character(names) || length(names) != 2) {
-    stop("Argument 'names' must be a character vector of length 2.")
+  # One path declares a within-library comparison; see run_coreact().
+  within_library <- length(paths) == 1
+
+  # Two paths naming the same file would test every pair twice and pair every
+  # feature with itself. Compare resolved paths before reading anything.
+  if (!within_library && file.exists(paths[1]) && file.exists(paths[2]) &&
+        identical(normalizePath(paths[1]), normalizePath(paths[2]))) {
+    stop("Both entries of 'paths' resolve to the same file. For a ",
+         "within-library comparison, pass that path alone.")
+  }
+
+  # The length-2 default cannot stand for a single input.
+  if (missing(names) && within_library) names <- "Input"
+  if (!is.character(names) || length(names) != length(paths)) {
+    stop(sprintf("Argument 'names' must be a character vector of length %d, matching 'paths'.",
+                 length(paths)))
+  }
+  if (within_library) {
+    # How "one per dataset" is written differs by argument, as resolve_xy_args()
+    # defines it: meta_cols / sample_cols / feature_ids take a LIST of two,
+    # since an atomic vector of length two names two columns of one dataset,
+    # while binarize and the prevalence bounds take a vector of two.
+    as_list <- list(meta_cols = meta_cols, sample_cols = sample_cols,
+                    feature_ids = feature_ids)
+    as_vec <- list(binarize = binarize, min_prevalence = min_prevalence,
+                   max_prevalence = max_prevalence)
+    two_valued <- c(
+      vapply(as_list, function(v) is.list(v) && length(v) > 1, logical(1)),
+      vapply(as_vec, function(v) !is.null(v) && length(v) > 1, logical(1))
+    )
+    if (any(two_valued)) {
+      stop(sprintf(
+        paste0("With one entry in 'paths' there is one dataset, so %s must be a single ",
+               "value, not one per dataset."),
+        paste(sprintf("'%s'", base::names(two_valued)[two_valued]), collapse = ", ")
+      ))
+    }
   }
   if (!is.character(out_path) || length(out_path) != 1) {
     stop("Argument 'out_path' must be a single file path.")
@@ -160,8 +223,8 @@ coreact_pipeline <- function(paths,
     binarize = binarize[1]
   )
 
-  # Load Y
-  obj_y <- import_coreact_tsv(
+  # Load Y, unless this is a within-library comparison
+  obj_y <- if (within_library) NULL else import_coreact_tsv(
     paths[2],
     meta_cols = m_cols$y,
     sample_cols = if (!is.null(s_cols)) s_cols$y else NULL,
@@ -173,16 +236,27 @@ coreact_pipeline <- function(paths,
   )
 
   # --- 3. Consistency Checks ---
-  if (!identical(colnames(obj_x$mat), colnames(obj_y$mat))) {
-    # Generate detailed error report
-    stop(format_col_mismatch(obj_x$mat, obj_y$mat, names[1], names[2]))
+  # One input is trivially consistent with itself.
+  if (!within_library) {
+    if (!identical(colnames(obj_x$mat), colnames(obj_y$mat))) {
+      # Generate detailed error report
+      stop(format_col_mismatch(obj_x$mat, obj_y$mat, names[1], names[2]))
+    }
+    # Two different paths can still hold the same data: a copy under another
+    # name imports to the same matrix, and would test every pair twice.
+    if (identical(obj_x$mat, obj_y$mat)) {
+      stop("The two entries of 'paths' hold the same data. For a within-library ",
+           "comparison, pass one path alone; each pair is then reported once.")
+    }
   }
 
   # --- 4. Step 1: Feature Selection (Marginal Prevalence) ---
   obj_x <- filter_by_prevalence(obj_x, min_prevalence[1],
                                 if (is.na(max_prevalence[1])) NULL else max_prevalence[1])
-  obj_y <- filter_by_prevalence(obj_y, min_prevalence[2],
-                                if (is.na(max_prevalence[2])) NULL else max_prevalence[2])
+  if (!within_library) {
+    obj_y <- filter_by_prevalence(obj_y, min_prevalence[2],
+                                  if (is.na(max_prevalence[2])) NULL else max_prevalence[2])
+  }
 
   gc()
 
@@ -226,8 +300,11 @@ coreact_pipeline <- function(paths,
     suffix = "x"
   )
 
+  # Within a library both sidecars come from the one object. They are not
+  # identical: under the kept triangle the last feature in index order never
+  # appears as feature_x, and the first never as feature_y.
   write_metadata_sidecar(
-    obj = obj_y,
+    obj = if (within_library) obj_x else obj_y,
     keep_ids = ids_y_final,
     out_path = out_path,
     suffix = "y"
@@ -241,14 +318,17 @@ coreact_pipeline <- function(paths,
 #'
 #' The computational core of the package: computes co-occurrence statistics
 #' for every pair of features between two `coreact_data` objects that share
-#' the same samples. [coreact_pipeline()] wraps this with file import,
+#' the same samples, or between the features of a single object.
+#' [coreact_pipeline()] wraps this with file import,
 #' feature selection, FDR adjustment and export; call `run_coreact()`
 #' directly when the data are already in memory, then [adjust_fdr()] to add
 #' adjusted p-values.
 #'
 #' @param data_x,data_y `coreact_data` objects (see [new_coreact_data()] and
 #'   [import_coreact_tsv()]). Their sample columns must be identical and in
-#'   the same order.
+#'   the same order. Omit `data_y` to compare a library with itself; see
+#'   Within-library comparison below. Supplying the same data as both
+#'   arguments is an error.
 #' @param n_cores Integer. Number of worker processes. Values above 1 use a
 #'   fork cluster and are therefore only effective on Linux/macOS; on Windows
 #'   the computation falls back to serial with a warning.
@@ -278,12 +358,31 @@ coreact_pipeline <- function(paths,
 #' if `data_y` is larger the two are swapped internally and the result columns
 #' are mapped back, so the output always refers to the inputs as supplied.
 #'
+#' @section Within-library comparison:
+#' Omitting `data_y` compares the features of `data_x` with each other. Each
+#' unordered pair is then reported once, as `idx_x < idx_y`, and no feature is
+#' paired with itself: the family is `n * (n - 1) / 2` rather than `n^2`. Which
+#' feature of a pair is `x` and which is `y` follows index order and carries no
+#' other meaning.
+#'
+#' Reporting both orientations would enter the same hypothesis in the family
+#' twice, and a feature paired with itself co-occurs perfectly by construction,
+#' so the self-pairs would occupy the top of the ranking without being
+#' findings. Both inflate the family that [adjust_fdr()] corrects over.
+#'
+#' Supplying one library as both `data_x` and `data_y` is refused, because the
+#' duplicate pairs cannot be removed reliably once two objects are involved. A
+#' copy of the same data under a different name cannot always be recognised,
+#' so when the two inputs share features that are identical across all samples
+#' a warning says how many and what it costs.
+#'
 #' @return A tibble with one row per pair passing `effect_filters` and
 #'   `max_p_val`, with columns `feature_x`, `feature_y`, `idx_x`, `idx_y`,
 #'   `intersection`, `size_x`, `size_y`, `union`, `jaccard`, `overlap`,
 #'   `p_val`. `idx_*` are row indices into the corresponding input object.
 #'   The attribute `n_pairs` holds the number of tested pairs
-#'   (`nrow(data_x) * nrow(data_y)`), which [adjust_fdr()] uses as the size
+#'   (`nrow(data_x) * nrow(data_y)`, or `n * (n - 1) / 2` when `data_y` is
+#'   omitted), which [adjust_fdr()] uses as the size
 #'   of the family. No multiple-testing adjustment is applied here.
 #' @export
 #' @examples
@@ -298,16 +397,40 @@ coreact_pipeline <- function(paths,
 #' attr(res, "n_pairs")
 #' res <- adjust_fdr(res)
 #' head(res[order(res$p_adj), ])
+#'
+#' # Within a single library: each pair once, no feature against itself
+#' res_within <- run_coreact(x)
+#' attr(res_within, "n_pairs")           # nrow(x) * (nrow(x) - 1) / 2
+#' all(res_within$idx_x < res_within$idx_y)
 run_coreact <- function(data_x,
-                        data_y,
+                        data_y = NULL,
                         n_cores = 1,
                         chunk_size = NULL,
                         effect_filters = list(),
                         max_p_val = NULL) {
 
   # --- 0. Input Validation ---
-  if (!inherits(data_x, "coreact_data") || !inherits(data_y, "coreact_data")) {
-    stop("'data_x' and 'data_y' must be 'coreact_data' objects (see new_coreact_data()).")
+  if (!inherits(data_x, "coreact_data")) {
+    stop("'data_x' must be a 'coreact_data' object (see new_coreact_data()).")
+  }
+
+  # Omitting data_y declares a within-library comparison. The mode is never
+  # inferred from the data: supplying one library as both arguments is refused,
+  # because each unordered pair would then be tested twice (once in each
+  # orientation) and every feature would also be paired with itself.
+  within_library <- is.null(data_y)
+  if (within_library) {
+    data_y <- data_x
+  } else {
+    if (!inherits(data_y, "coreact_data")) {
+      stop("'data_y' must be a 'coreact_data' object, or omitted for a ",
+           "within-library comparison (see new_coreact_data()).")
+    }
+    if (identical(data_x$mat, data_y$mat)) {
+      stop("'data_x' and 'data_y' hold the same data. For a within-library ",
+           "comparison, supply 'data_x' only; each pair is then reported once.")
+    }
+    warn_shared_identical_features(data_x, data_y)
   }
   validate_effect_filters(effect_filters)
   if (!is.numeric(n_cores) || length(n_cores) != 1 || is.na(n_cores) || n_cores < 1) {
@@ -326,25 +449,35 @@ run_coreact <- function(data_x,
   # Samples must be the same set, in the same order, for tcrossprod to mean
   # "shared samples". The pipeline checks this on import; check again here so
   # that direct callers get the same protection.
-  cn_x <- colnames(data_x$mat)
-  cn_y <- colnames(data_y$mat)
-  if (is.null(cn_x) || is.null(cn_y)) {
-    if (ncol(data_x$mat) != ncol(data_y$mat)) {
-      stop(sprintf("Sample count differs: '%s' has %d columns, '%s' has %d.",
-                   data_x$name, ncol(data_x$mat), data_y$name, ncol(data_y$mat)))
+  # One input is trivially consistent with itself.
+  if (!within_library) {
+    cn_x <- colnames(data_x$mat)
+    cn_y <- colnames(data_y$mat)
+    if (is.null(cn_x) || is.null(cn_y)) {
+      if (ncol(data_x$mat) != ncol(data_y$mat)) {
+        stop(sprintf("Sample count differs: '%s' has %d columns, '%s' has %d.",
+                     data_x$name, ncol(data_x$mat), data_y$name, ncol(data_y$mat)))
+      }
+    } else if (!identical(cn_x, cn_y)) {
+      stop(format_col_mismatch(data_x$mat, data_y$mat, data_x$name, data_y$name))
     }
-  } else if (!identical(cn_x, cn_y)) {
-    stop(format_col_mismatch(data_x$mat, data_y$mat, data_x$name, data_y$name))
   }
 
-  # The family of tests: every pair of features supplied
-  n_pairs <- as.numeric(nrow(data_x$mat)) * as.numeric(nrow(data_y$mat))
+  # The family of tests. Within a library each unordered pair is tested once
+  # and no feature is paired with itself, so the family is n * (n - 1) / 2.
+  n_pairs <- if (within_library) {
+    n_feat <- as.numeric(nrow(data_x$mat))
+    n_feat * (n_feat - 1) / 2
+  } else {
+    as.numeric(nrow(data_x$mat)) * as.numeric(nrow(data_y$mat))
+  }
 
   # --- 1. Swap Optimization ---
   # Chunk over the larger feature set so that the (smaller) Y matrix is what
-  # every worker holds in full.
+  # every worker holds in full. Never within a library, where the two sides are
+  # one matrix and the kept triangle is defined on its index order.
   swapped <- FALSE
-  if (nrow(data_x$mat) < nrow(data_y$mat)) {
+  if (!within_library && nrow(data_x$mat) < nrow(data_y$mat)) {
     message("Optimizing: Swapping X and Y for load balancing...")
     tmp <- data_x
     data_x <- data_y
@@ -388,7 +521,8 @@ run_coreact <- function(data_x,
       prev_y = prev_y,
       n_samples = n_samples,
       config = effect_filters,
-      max_p_val = max_p_val
+      max_p_val = max_p_val,
+      upper_triangle = within_library
     )
   }
 
@@ -460,7 +594,7 @@ run_coreact <- function(data_x,
 #' mat <- matrix(c(1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0), nrow = 3, byrow = TRUE,
 #'               dimnames = list(c("A", "B", "C"), paste0("S", 1:4)))
 #' obj <- new_coreact_data(mat, data.frame(row.names = rownames(mat)))
-#' res <- adjust_fdr(run_coreact(obj, obj))
+#' res <- adjust_fdr(run_coreact(obj))
 #' res[, c("feature_x", "feature_y", "p_val", "p_adj")]
 adjust_fdr <- function(res, n_pairs = attr(res, "n_pairs"), method = "BH") {
   if (!is.data.frame(res) || !"p_val" %in% names(res)) {

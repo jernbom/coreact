@@ -12,7 +12,8 @@ worker_chunk_calc(
   prev_y,
   n_samples,
   config,
-  max_p_val = NULL
+  max_p_val = NULL,
+  upper_triangle = FALSE
 )
 }
 \arguments{
@@ -37,6 +38,11 @@ exceeds it are dropped. Because a BH-adjusted p-value is never smaller
 than the raw p-value, dropping pairs with \code{p_val > fdr_threshold} cannot
 change which pairs are significant at that threshold; it only saves
 memory.}
+
+\item{upper_triangle}{Logical. For a within-library comparison, where X and
+Y are the same matrix, keep only pairs with \code{idx_x < idx_y}. That drops
+the self-pairs (a feature against itself) and one of each mirrored pair,
+which carry the same hypothesis with x and y exchanged.}
 }
 \value{
 A tibble of passing pairs with stats, or \code{NULL} if none pass.

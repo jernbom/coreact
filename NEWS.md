@@ -1,3 +1,37 @@
+# coreact 1.4.0
+
+## New features
+
+* `run_coreact()` and `coreact_pipeline()` can compare a library with itself.
+  Omit `data_y`, or pass a single entry in `paths`, and every pair of the
+  library's features is tested once: the result satisfies `idx_x < idx_y`, no
+  feature is paired with itself, and the family `adjust_fdr()` corrects over is
+  `n * (n - 1) / 2` rather than `n^2`. Reporting both orientations would enter
+  each hypothesis in the family twice, and a feature paired with itself
+  co-occurs perfectly by construction, so those rows would top the ranking
+  without being findings. Which feature of a pair is `x` and which is `y`
+  follows index order and carries no other meaning.
+* `run_coreact()` warns when its two inputs share features that are identical
+  across all samples, with the count, examples and what it costs. This catches
+  one library supplied as two objects — a copy of a file under another name, or
+  the same library filtered twice — which cannot be refused outright because
+  the two objects differ.
+
+## Changes to existing behaviour
+
+* `run_coreact(x, y)` and `coreact_pipeline()` now refuse inputs that hold the
+  same data, directing the caller to the single-input form. For `paths` this is
+  checked both on the resolved paths and on the imported matrices. Code that
+  relied on `run_coreact(obj, obj)` returning all `n^2` ordered pairs must now
+  call `run_coreact(obj)`, which returns each pair once.
+* `coreact_pipeline()` accepts `paths` of length 1. With one input, `names`,
+  `meta_cols`, `sample_cols`, `feature_ids`, `binarize`, `min_prevalence` and
+  `max_prevalence` must each be a single value, and `names` defaults to
+  `"Input"`.
+* `import_coreact_tsv()`'s error for feature-ID columns outside `meta_cols` now
+  also names `feature_ids`, the argument that sets them when the call came
+  through `coreact_pipeline()`.
+
 # coreact 1.3.0
 
 ## Procedure
