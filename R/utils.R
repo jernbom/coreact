@@ -91,6 +91,25 @@ with_prevalence_cutoffs <- function(obj, lo, hi) {
   obj
 }
 
+#' Validate Parallel-Execution Arguments (Internal)
+#'
+#' Shared by [run_coreact()] and [run_coreact_outcome()] so that both accept and
+#' refuse exactly the same values.
+#'
+#' @param n_cores,chunk_size As documented for [run_coreact()].
+#' @return `NULL`, invisibly; errors on invalid values.
+#' @keywords internal
+validate_parallel_args <- function(n_cores, chunk_size) {
+  if (!is.numeric(n_cores) || length(n_cores) != 1 || is.na(n_cores) || n_cores < 1) {
+    stop("'n_cores' must be a single integer >= 1.")
+  }
+  if (!is.null(chunk_size) &&
+        (!is.numeric(chunk_size) || length(chunk_size) != 1 || is.na(chunk_size) || chunk_size < 1)) {
+    stop("'chunk_size' must be NULL or a single integer >= 1.")
+  }
+  invisible(NULL)
+}
+
 #' Path of a Sidecar File Next to a Results File (Internal)
 #'
 #' `results.tsv` with tag `metadata_x` gives `results_metadata_x.tsv`. An

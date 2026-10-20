@@ -476,13 +476,7 @@ run_coreact <- function(data_x,
     warn_shared_identical_features(data_x, data_y)
   }
   validate_effect_filters(effect_filters)
-  if (!is.numeric(n_cores) || length(n_cores) != 1 || is.na(n_cores) || n_cores < 1) {
-    stop("'n_cores' must be a single integer >= 1.")
-  }
-  if (!is.null(chunk_size) &&
-        (!is.numeric(chunk_size) || length(chunk_size) != 1 || is.na(chunk_size) || chunk_size < 1)) {
-    stop("'chunk_size' must be NULL or a single integer >= 1.")
-  }
+  validate_parallel_args(n_cores, chunk_size)
   if (!is.null(max_p_val) &&
         (!is.numeric(max_p_val) || length(max_p_val) != 1 || is.na(max_p_val) ||
            max_p_val < 0 || max_p_val > 1)) {

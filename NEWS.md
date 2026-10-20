@@ -2,6 +2,17 @@
 
 ## New features
 
+* `run_coreact_outcome()` associates each pair in a coreact result with a
+  binary or continuous sample-level outcome. Each pair is classified by which
+  cells of its 2x2 table are occupied, and tested on the contrast that
+  occupancy supports: the interaction where all four cells are occupied, a
+  conditional contrast for nested pairs, double-positive against
+  double-negative for identical features. The choice never looks at the
+  outcome. Tests are likelihood ratio (binary) or exact F (continuous) tests,
+  adjusted once over all tested rows; every estimable contrast is reported.
+  Separated logistic fits report infinite estimates with their p-values kept.
+  The continuous path assumes the four cells are equally variable.
+
 * Results record how they were computed. `run_coreact()` attaches a
   `provenance` attribute holding the family size, the number of samples, the
   effect-size thresholds and `max_p_val`, whether the run was within-library,
