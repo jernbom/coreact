@@ -75,9 +75,14 @@ brute_force_coreact <- function(mat_x, mat_y) {
 }
 
 # Sort a results tibble into canonical order for comparisons.
+# Comparisons through this helper are of the data, between runs that may be set
+# up differently on purpose (inputs swapped, pruning on or off), so the
+# provenance attribute, which records exactly those differences, is dropped.
+# n_pairs is kept: the family size must agree. Provenance has its own tests.
 sort_results <- function(res) {
   res <- res[order(res$feature_x, res$feature_y), ]
   rownames(res) <- NULL
+  attr(res, "provenance") <- NULL
   res
 }
 

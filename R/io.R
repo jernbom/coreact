@@ -214,3 +214,88 @@ as_binary_sparse <- function(x) {
     dimnames = dimnames(x)
   )
 }
+
+#' Read a Coreact Results File Back
+#'
+#' Reads a results table written by [coreact_pipeline()], restoring the column
+#' types it had in memory and the attributes that a TSV cannot hold, so that
+#' [adjust_fdr()] can be applied to it again.
+#'
+#' @param path String. The `out_path` given to [coreact_pipeline()].
+#'
+#' @details
+#' `feature_x` and `feature_y` are always read as text. With the default
+#' row-number feature IDs they would otherwise come back as integers, which
+#' no longer match the row names of the objects they index. The other
+#' columns are given the types of an in-memory result, which also keeps an
+#' empty results file from reading back as columns of logicals.
+#'
+#' The `n_pairs` and `provenance` attributes are restored from the provenance
+#' sidecar (`*_provenance.tsv`) next to `path`. Without one, for example for
+#' results written by coreact 1.4.0 or earlier, the table is returned without
+#' them and a warning says that [adjust_fdr()] then needs `n_pairs`.
+#'
+#' The results file stores doubles to 15 significant digits, so `p_val` and
+#' the effect sizes agree with the in-memory values to about `1e-15`, not
+#' bit for bit. The provenance is restored exactly.
+#'
+#' @return A tibble, with attributes `n_pairs` and `provenance` when the
+#'   sidecar is present.
+#' @export
+#' @examples
+#' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+#' path_y <- system.file("extdata", "input_y.tsv", package = "coreact")
+#' out <- file.path(tempdir(), "reread.tsv")
+#'
+#' res <- coreact_pipeline(
+#'   paths = c(path_x, path_y),
+#'   out_path = out,
+#'   meta_cols = list(c("u_pep_id", "pep_nr", "protein_id", "gene_name"),
+#'                    c("protein_id", "gene_name")),
+#'   feature_ids = list("u_pep_id", c("protein_id", "gene_name")),
+#'   min_prevalence = c(0.1, 2)
+#' )
+#'
+#' back <- read_coreact_results(out)
+#' attr(back, "n_pairs")
+#' attr(back, "provenance")$x_min_prevalence_count
+#'
+#' # Re-adjust over the same family, e.g. with another method
+#' head(adjust_fdr(back, method = "holm"))
+read_coreact_results <- function(path) {
+  if (!is.character(path) || length(path) != 1 || is.na(path)) {
+    stop("'path' must be a single file path.")
+  }
+  if (!file.exists(path)) stop(sprintf("File not found: %s", path))
+
+  # Check the header before reading, so the column types below are only ever
+  # requested for columns that exist
+  schema <- empty_result_tibble()
+  header <- names(data.table::fread(path, sep = "\t", nrows = 0))
+  missing_cols <- setdiff(names(schema), header)
+  if (length(missing_cols) > 0) {
+    stop(sprintf("'%s' is not a coreact results file: column(s) %s missing.",
+                 path, paste(sprintf("'%s'", missing_cols), collapse = ", ")))
+  }
+
+  res <- data.table::fread(path, sep = "\t",
+                           colClasses = list(character = c("feature_x", "feature_y")))
+  data.table::setDF(res)
+  as_type <- list(character = as.character, integer = as.integer, double = as.numeric)
+  for (col in names(schema)) res[[col]] <- as_type[[typeof(schema[[col]])]](res[[col]])
+  if ("p_adj" %in% names(res)) res$p_adj <- as.numeric(res$p_adj)
+  res <- tibble::as_tibble(res)
+
+  side <- sidecar_path(path, "provenance")
+  if (!file.exists(side)) {
+    warning(sprintf(
+      paste0("No provenance sidecar at %s, so the result has no 'n_pairs' attribute; ",
+             "pass n_pairs to adjust_fdr() explicitly."),
+      side
+    ), call. = FALSE)
+    return(res)
+  }
+  provenance <- read_provenance_sidecar(side)
+  attr(res, "provenance") <- provenance
+  with_n_pairs(res, provenance$n_pairs)
+}

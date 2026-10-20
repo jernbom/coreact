@@ -28,7 +28,15 @@ resolve_xy_args <- function(val, arg_name) {
 #' @param min_thresh Numeric. Minimum prevalence; `0` disables the lower bound.
 #' @param max_thresh Numeric or `NULL`. Maximum prevalence; `NULL` disables
 #'   the upper bound.
-#' @return A subsetted `coreact_data` object.
+#' @return A subsetted `coreact_data` object carrying the attribute
+#'   `prevalence_cutoffs`: the bounds applied, resolved to counts, as
+#'   `c(min = , max = )`, with `max = Inf` when there is no upper bound. Fractions
+#'   are resolved with `ceiling()` for the lower bound and `floor()` for the
+#'   upper, so the counts reproduce the filter exactly on the same samples.
+#'
+#'   The attribute describes this object only. Any later subsetting or `cbind()`
+#'   builds a new object without it, and [run_coreact()] then records the
+#'   cutoffs as unknown rather than as no filter.
 #' @keywords internal
 filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
   if (!is.numeric(min_thresh) || length(min_thresh) != 1 || is.na(min_thresh)) {
@@ -38,7 +46,9 @@ filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
         (!is.numeric(max_thresh) || length(max_thresh) != 1 || is.na(max_thresh))) {
     stop("Maximum prevalence threshold must be NULL or a single non-NA number.")
   }
-  if (min_thresh <= 0 && is.null(max_thresh)) return(obj)
+  if (min_thresh <= 0 && is.null(max_thresh)) {
+    return(with_prevalence_cutoffs(obj, 0, Inf))
+  }
 
   n_samp <- ncol(obj$mat)
 
@@ -65,8 +75,38 @@ filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
   message(sprintf("[%s] Prevalence filter (%s samples): keeping %d of %d features.",
                   obj$name, bounds, n_keep, length(keep)))
 
-  # Uses the S3 subsetting method '[.coreact_data' defined in class_coreact.R
-  obj[keep, ]
+  # Uses the S3 subsetting method '[.coreact_data' defined in class_coreact.R.
+  # That method builds a fresh object, so the cutoffs are attached afterwards.
+  with_prevalence_cutoffs(obj[keep, ], lo, hi)
+}
+
+#' Attach Resolved Prevalence Cutoffs (Internal)
+#'
+#' @param obj A `coreact_data` object.
+#' @param lo,hi Lower and upper bounds as counts; `hi = Inf` for no upper bound.
+#' @return `obj` with the `prevalence_cutoffs` attribute set.
+#' @keywords internal
+with_prevalence_cutoffs <- function(obj, lo, hi) {
+  attr(obj, "prevalence_cutoffs") <- c(min = as.numeric(lo), max = as.numeric(hi))
+  obj
+}
+
+#' Path of a Sidecar File Next to a Results File (Internal)
+#'
+#' `results.tsv` with tag `metadata_x` gives `results_metadata_x.tsv`. An
+#' `out_path` without an extension gets the tag and `.tsv` appended.
+#'
+#' @param out_path String. The path of the main results file.
+#' @param tag String. What the sidecar holds, e.g. `"metadata_x"`.
+#' @return String.
+#' @keywords internal
+sidecar_path <- function(out_path, tag) {
+  ext <- tools::file_ext(out_path)
+  if (nzchar(ext)) {
+    sprintf("%s_%s.%s", tools::file_path_sans_ext(out_path), tag, ext)
+  } else {
+    sprintf("%s_%s.tsv", out_path, tag)
+  }
 }
 
 #' Write Sidecar Metadata (Internal)
@@ -82,14 +122,7 @@ filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
 #' @keywords internal
 write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
   # Construct filename: results.tsv -> results_metadata_x.tsv
-  ext <- tools::file_ext(out_path)
-  if (nzchar(ext)) {
-    # If extension exists, insert suffix before it
-    meta_file <- sprintf("%s_metadata_%s.%s", tools::file_path_sans_ext(out_path), suffix, ext)
-  } else {
-    # If no extension, append suffix + .tsv default
-    meta_file <- sprintf("%s_metadata_%s.tsv", out_path, suffix)
-  }
+  meta_file <- sidecar_path(out_path, paste0("metadata_", suffix))
 
   # Extract IDs from the object (assuming rownames of matrix are the master IDs)
   all_ids <- rownames(obj$mat)
@@ -115,6 +148,123 @@ write_metadata_sidecar <- function(obj, keep_ids, out_path, suffix) {
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
 
   data.table::fwrite(export_df, file = meta_file, sep = "\t", quote = FALSE)
+}
+
+#' Write the Provenance Sidecar (Internal)
+#'
+#' Writes a result's provenance next to it as `<out>_provenance.tsv`, a
+#' key-value table read back by [read_provenance_sidecar()].
+#'
+#' @details
+#' The columns are `key`, `type`, `index` and `value`. A scalar is one row; a
+#' vector is one row per element with `index` counting from 1; `NULL` and
+#' empty vectors are a single row with `index` 0. `type` is one of
+#' `character`, `integer`, `double`, `logical` or `null`, so that every value
+#' reads back with its type. That matters for the import arguments: column 2
+#' given by index and a column named `"2"` are different requests, and only
+#' the type tells them apart once both are text.
+#'
+#' Doubles are written with the fewest significant digits that read back to
+#' the identical number, so values such as `0.1` stay legible while `1/3`
+#' round-trips exactly. A missing character value is refused rather than
+#' written, because it could not be told apart from the string `"NA"`.
+#'
+#' @param provenance A flat named list of atomic vectors or `NULL`s.
+#' @param out_path String. The path of the main results file.
+#' @return The sidecar's path, invisibly.
+#' @keywords internal
+write_provenance_sidecar <- function(provenance, out_path) {
+  file <- sidecar_path(out_path, "provenance")
+
+  rows <- lapply(names(provenance), function(key) {
+    v <- provenance[[key]]
+    if (is.null(v)) {
+      return(data.frame(key = key, type = "null", index = 0L, value = ""))
+    }
+    type <- typeof(v)
+    if (!type %in% c("character", "integer", "double", "logical")) {
+      stop(sprintf("Provenance entry '%s' has unsupported type '%s'.", key, type))
+    }
+    if (type == "character" && anyNA(v)) {
+      stop(sprintf("Provenance entry '%s' contains a missing string.", key))
+    }
+    if (length(v) == 0) {
+      return(data.frame(key = key, type = type, index = 0L, value = ""))
+    }
+    data.frame(key = key, type = type, index = seq_along(v), value = encode_value(v))
+  })
+  table <- do.call(rbind, rows)
+
+  message(sprintf("Writing provenance (%d entries) to %s ...", length(provenance), file))
+  out_dir <- dirname(file)
+  if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+  data.table::fwrite(table, file = file, sep = "\t")
+  invisible(file)
+}
+
+#' Encode Atomic Values as Exact Text (Internal)
+#'
+#' @param v An atomic vector.
+#' @return A character vector of the same length.
+#' @keywords internal
+encode_value <- function(v) {
+  if (!is.double(v)) return(as.character(v))
+  out <- trimws(formatC(v, digits = 15, format = "g"))
+  # 15 significant digits are not always enough to identify a double; fall
+  # back to 17, which always is. Only finite values need checking: the
+  # tokens for NA and the infinities are exact by construction.
+  fin <- is.finite(v)
+  inexact <- fin
+  inexact[fin] <- as.numeric(out[fin]) != v[fin]
+  out[inexact] <- trimws(formatC(v[inexact], digits = 17, format = "g"))
+  out
+}
+
+#' Decode Exact Text Back to Atomic Values (Internal)
+#'
+#' Inverse of [encode_value()]. The token `"NA"` is a missing value for every
+#' type except character, where the writer never emits a missing value and
+#' `"NA"` is therefore the literal string.
+#'
+#' @param x Character vector.
+#' @param type One of `"character"`, `"integer"`, `"double"`, `"logical"`.
+#' @return A vector of that type.
+#' @keywords internal
+decode_value <- function(x, type) {
+  if (type == "character") return(x)
+  x[x == "NA"] <- NA_character_
+  switch(type, integer = as.integer(x), double = as.numeric(x), logical = as.logical(x))
+}
+
+#' Read the Provenance Sidecar (Internal)
+#'
+#' Inverse of [write_provenance_sidecar()].
+#'
+#' @param file String. Path of the sidecar itself.
+#' @return A named list, with `NULL` entries preserved.
+#' @keywords internal
+read_provenance_sidecar <- function(file) {
+  table <- data.table::fread(file, sep = "\t", colClasses = "character", na.strings = NULL)
+  data.table::setDF(table)
+  if (!identical(names(table), c("key", "type", "index", "value"))) {
+    stop(sprintf("'%s' is not a coreact provenance sidecar.", file))
+  }
+  types <- c("character", "integer", "double", "logical")
+
+  out <- list()
+  for (key in unique(table$key)) {
+    part <- table[table$key == key, ]
+    type <- unique(part$type)
+    if (length(type) != 1 || !type %in% c(types, "null")) {
+      stop(sprintf("Provenance entry '%s' in '%s' has an invalid type.", key, file))
+    }
+    out[key] <- list(
+      if (type == "null") NULL
+      else if (all(part$index == "0")) decode_value(character(0), type)
+      else decode_value(part$value, type)
+    )
+  }
+  out
 }
 
 #' Check if a Matrix is Binary (0/1)

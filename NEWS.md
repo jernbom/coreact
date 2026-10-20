@@ -1,3 +1,24 @@
+# coreact 1.5.0
+
+## New features
+
+* Results record how they were computed. `run_coreact()` attaches a
+  `provenance` attribute holding the family size, the number of samples, the
+  effect-size thresholds and `max_p_val`, whether the run was within-library,
+  the coreact version, and for each input its name, feature count, number of
+  positive cells and the prevalence cutoffs it was filtered with, as counts.
+  `coreact_pipeline()` adds `fdr_threshold` and the import settings of each
+  input, and writes the lot next to the results as `*_provenance.tsv`.
+* `read_coreact_results()` reads a results file back with the column types it
+  had in memory and with its `n_pairs` and `provenance` attributes, so
+  `adjust_fdr()` can be applied to results from disk. It could not before,
+  because `n_pairs` did not survive being written.
+
+## Changes to existing behaviour
+
+* `coreact_pipeline()` writes a third sidecar, `*_provenance.tsv`, beside the
+  results and the two metadata files.
+
 # coreact 1.4.0
 
 ## New features

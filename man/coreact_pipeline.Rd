@@ -74,11 +74,19 @@ The default applies no effect-size filter.}
 }
 \value{
 Invisibly, the tibble of results that was written to \code{out_path}
-(including the \code{p_adj} column). Files are written as a side effect: the
-main results table at \code{out_path} and two metadata sidecars
-(\verb{*_metadata_x.tsv}, \verb{*_metadata_y.tsv}) next to it. Within a library the
-two sidecars hold the features appearing as \code{feature_x} and as
+(including the \code{p_adj} column), with the attributes \code{n_pairs} and
+\code{provenance} described in \code{\link[=run_coreact]{run_coreact()}}. The pipeline's \code{provenance} also
+records \code{fdr_threshold}, \code{feature_id_sep} and, per side, the input path
+(made absolute), name, \code{meta_cols}, \code{sample_cols}, \code{feature_ids},
+\code{binarize} and prevalence bounds as given.
+
+Files are written as a side effect: the main results table at \code{out_path},
+two metadata sidecars (\verb{*_metadata_x.tsv}, \verb{*_metadata_y.tsv}) and a
+provenance sidecar (\verb{*_provenance.tsv}) next to it. Within a library the
+two metadata sidecars hold the features appearing as \code{feature_x} and as
 \code{feature_y} respectively, which differ at the ends of the index order.
+\code{\link[=read_coreact_results]{read_coreact_results()}} reads the results back together with their
+provenance, so that \code{\link[=adjust_fdr]{adjust_fdr()}} can be applied to them again.
 }
 \description{
 Reads one or two TSV files and runs the three-step co-reactivity procedure:
