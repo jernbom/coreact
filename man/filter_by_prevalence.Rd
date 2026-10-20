@@ -15,7 +15,15 @@ filter_by_prevalence(obj, min_thresh = 0, max_thresh = NULL)
 the upper bound.}
 }
 \value{
-A subsetted \code{coreact_data} object.
+A subsetted \code{coreact_data} object carrying the attribute
+\code{prevalence_cutoffs}: the bounds applied, resolved to counts, as
+\code{c(min = , max = )}, with \code{max = Inf} when there is no upper bound. Fractions
+are resolved with \code{ceiling()} for the lower bound and \code{floor()} for the
+upper, so the counts reproduce the filter exactly on the same samples.
+
+The attribute describes this object only. Any later subsetting or \code{cbind()}
+builds a new object without it, and \code{\link[=run_coreact]{run_coreact()}} then records the
+cutoffs as unknown rather than as no filter.
 }
 \description{
 Retains the features of a coreact_data object whose prevalence (number of

@@ -78,11 +78,19 @@
 #' under another name that imports to the same matrix.
 #'
 #' @return Invisibly, the tibble of results that was written to `out_path`
-#'   (including the `p_adj` column). Files are written as a side effect: the
-#'   main results table at `out_path` and two metadata sidecars
-#'   (`*_metadata_x.tsv`, `*_metadata_y.tsv`) next to it. Within a library the
-#'   two sidecars hold the features appearing as `feature_x` and as
+#'   (including the `p_adj` column), with the attributes `n_pairs` and
+#'   `provenance` described in [run_coreact()]. The pipeline's `provenance` also
+#'   records `fdr_threshold`, `feature_id_sep` and, per side, the input path
+#'   (made absolute), name, `meta_cols`, `sample_cols`, `feature_ids`,
+#'   `binarize` and prevalence bounds as given.
+#'
+#'   Files are written as a side effect: the main results table at `out_path`,
+#'   two metadata sidecars (`*_metadata_x.tsv`, `*_metadata_y.tsv`) and a
+#'   provenance sidecar (`*_provenance.tsv`) next to it. Within a library the
+#'   two metadata sidecars hold the features appearing as `feature_x` and as
 #'   `feature_y` respectively, which differ at the ends of the index order.
+#'   [read_coreact_results()] reads the results back together with their
+#'   provenance, so that [adjust_fdr()] can be applied to them again.
 #' @export
 #' @examples
 #' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
@@ -272,6 +280,27 @@ coreact_pipeline <- function(paths,
     max_p_val = fdr_threshold
   )
 
+  # Add the pipeline's own arguments to the engine's provenance: with them the
+  # inputs can be re-imported and re-filtered into the very objects the engine
+  # ran on. Each side's values are recorded as resolved, so a per-dataset list
+  # is stored per side and never has to be re-interpreted.
+  import_side <- function(i, tag) {
+    pick <- function(resolved) if (is.null(resolved)) NULL else resolved[[c("x", "y")[i]]]
+    stats::setNames(
+      list(normalizePath(paths[i], winslash = "/"), names[i], pick(m_cols), pick(s_cols),
+           pick(f_ids), binarize[i], min_prevalence[i],
+           if (is.na(max_prevalence[i])) NULL else max_prevalence[i]),
+      paste0(tag, c("_path", "_input_name", "_meta_cols", "_sample_cols", "_feature_ids",
+                    "_binarize", "_min_prevalence", "_max_prevalence"))
+    )
+  }
+  attr(results, "provenance") <- c(
+    attr(results, "provenance"),
+    list(fdr_threshold = fdr_threshold, feature_id_sep = feature_id_sep),
+    import_side(1, "x"),
+    if (!within_library) import_side(2, "y")
+  )
+
   results <- adjust_fdr(results)
 
   if (!is.null(fdr_threshold)) {
@@ -309,6 +338,11 @@ coreact_pipeline <- function(paths,
     out_path = out_path,
     suffix = "y"
   )
+
+  # --- 7. Write Provenance ---
+  # Restores what fwrite() cannot carry: the family size adjust_fdr() needs,
+  # and the settings that reproduce the filtered inputs.
+  write_provenance_sidecar(attr(results, "provenance"), out_path)
 
   message("Pipeline completed successfully.")
   invisible(results)
@@ -384,6 +418,15 @@ coreact_pipeline <- function(paths,
 #'   (`nrow(data_x) * nrow(data_y)`, or `n * (n - 1) / 2` when `data_y` is
 #'   omitted), which [adjust_fdr()] uses as the size
 #'   of the family. No multiple-testing adjustment is applied here.
+#'
+#'   The attribute `provenance` is a named list recording how the result was
+#'   computed: the coreact version, `within_library`, `n_samples`, `n_pairs`,
+#'   `max_p_val` and the effect-size thresholds (`effect_min_*`, `0` meaning
+#'   off). For each side (`x_*`, and `y_*` unless within a library) it records
+#'   the object's `name`, `n_features` and `n_positive` (positive cells), as
+#'   received, and the prevalence cutoffs it was filtered with as counts.
+#'   Cutoffs are `NA` when the object does not carry them, for example because
+#'   it was built directly rather than filtered by [coreact_pipeline()].
 #' @export
 #' @examples
 #' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
@@ -472,6 +515,17 @@ run_coreact <- function(data_x,
     as.numeric(nrow(data_x$mat)) * as.numeric(nrow(data_y$mat))
   }
 
+  # Provenance is recorded here, BEFORE the swap below: after it, data_x may be
+  # the caller's Y, and a record taken then would describe each side under the
+  # other's name.
+  provenance <- record_provenance(data_x, if (within_library) NULL else data_y,
+                                  n_pairs = n_pairs, effect_filters = effect_filters,
+                                  max_p_val = max_p_val)
+  finish <- function(res) {
+    attr(res, "provenance") <- provenance
+    with_n_pairs(res, n_pairs)
+  }
+
   # --- 1. Swap Optimization ---
   # Chunk over the larger feature set so that the (smaller) Y matrix is what
   # every worker holds in full. Never within a library, where the two sides are
@@ -489,7 +543,7 @@ run_coreact <- function(data_x,
 
   # Nothing to compare: return the empty schema rather than failing in split().
   if (n_features_x == 0 || nrow(data_y$mat) == 0) {
-    return(with_n_pairs(empty_result_tibble(), n_pairs))
+    return(finish(empty_result_tibble()))
   }
 
   # Calculate Stats (as double, so column types do not depend on Matrix version)
@@ -544,7 +598,7 @@ run_coreact <- function(data_x,
 
   # Prepare Empty Schema if no results
   if (length(res) == 0) {
-    return(with_n_pairs(empty_result_tibble(), n_pairs))
+    return(finish(empty_result_tibble()))
   }
 
   final_df <- tibble::as_tibble(data.table::rbindlist(res))
@@ -567,7 +621,7 @@ run_coreact <- function(data_x,
   }
 
   # Reorder columns for readability (same order as empty_result_tibble())
-  with_n_pairs(final_df[, names(empty_result_tibble())], n_pairs)
+  finish(final_df[, names(empty_result_tibble())])
 }
 
 #' Adjust P-values Over the Full Pair Family
@@ -580,6 +634,7 @@ run_coreact <- function(data_x,
 #' @param res A tibble returned by [run_coreact()].
 #' @param n_pairs Number of tested pairs. Defaults to the `n_pairs` attribute
 #'   set by [run_coreact()]; supply it explicitly if the attribute was lost.
+#'   [read_coreact_results()] restores it for results read from disk.
 #' @param method Adjustment method passed to [stats::p.adjust()].
 #'
 #' @details
@@ -609,6 +664,60 @@ adjust_fdr <- function(res, n_pairs = attr(res, "n_pairs"), method = "BH") {
   }
   res$p_adj <- stats::p.adjust(res$p_val, method = method, n = n_pairs)
   res
+}
+
+#' Record How a Result Was Computed (Internal)
+#'
+#' Builds the provenance that [run_coreact()] attaches to its result. It is a
+#' flat named list so that it writes to, and reads back from, a key-value
+#' sidecar without restructuring.
+#'
+#' @param data_x,data_y `coreact_data` objects exactly as `run_coreact()`
+#'   received them; `data_y = NULL` for a within-library comparison.
+#' @param n_pairs Size of the tested family.
+#' @param effect_filters,max_p_val As passed to `run_coreact()`.
+#'
+#' @details
+#' Each side gets a fingerprint — object name, number of features, number of
+#' positive cells — that later steps can check an object against, and the
+#' prevalence cutoffs it was filtered with, as counts. Cutoffs are `NA` when
+#' the object does not carry them (it was never filtered, or was subset or
+#' combined since), which records them as unknown rather than as no filter.
+#' Effect-size filters are recorded under all three names, `0` meaning off,
+#' which is how [run_coreact()] treats a missing entry.
+#'
+#' @return A named list.
+#' @keywords internal
+record_provenance <- function(data_x, data_y, n_pairs, effect_filters, max_p_val) {
+  side <- function(obj, tag) {
+    cut <- attr(obj, "prevalence_cutoffs")
+    if (is.null(cut)) cut <- c(min = NA_real_, max = NA_real_)
+    stats::setNames(
+      list(obj$name, as.numeric(nrow(obj$mat)), as.numeric(sum(obj$mat)),
+           unname(cut[["min"]]), unname(cut[["max"]])),
+      paste0(tag, c("_name", "_n_features", "_n_positive",
+                    "_min_prevalence_count", "_max_prevalence_count"))
+    )
+  }
+  effect <- function(name) {
+    v <- effect_filters[[name]]
+    if (is.null(v)) 0 else as.numeric(v)
+  }
+
+  c(
+    list(
+      coreact_version = as.character(utils::packageVersion("coreact")),
+      within_library = is.null(data_y),
+      n_samples = as.numeric(ncol(data_x$mat)),
+      n_pairs = as.numeric(n_pairs),
+      max_p_val = max_p_val,
+      effect_min_intersection = effect("min_intersection"),
+      effect_min_jaccard = effect("min_jaccard"),
+      effect_min_overlap = effect("min_overlap")
+    ),
+    side(data_x, "x"),
+    if (!is.null(data_y)) side(data_y, "y")
+  )
 }
 
 #' Attach the Family Size to a Result (Internal)

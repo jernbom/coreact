@@ -151,6 +151,13 @@ Corresponding metadata is saved in sidecar files (linked by `feature_x` / `featu
 | PEP_1003 | PEP_1003 | 3 | PROT_1 | GENE_E |
 | PEP_1004 | PEP_1004 | 4 | PROT_1 | GENE_T |
 
+A provenance sidecar, **`results/interactions_provenance.tsv`**, records how the results were computed: the family size `n_pairs`, the prevalence cutoffs as counts, the FDR and effect-size thresholds, the import settings for each input, and the coreact version. `read_coreact_results()` reads the results back with it, so they can be adjusted again from disk:
+
+```r
+res <- read_coreact_results("results/interactions.tsv")
+res <- adjust_fdr(res, method = "holm")   # same family, another method
+```
+
 
 ## 📐 Methodology
 
