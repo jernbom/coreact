@@ -15,6 +15,10 @@
   get 95% intervals that agree with their tests — profile likelihood for a
   binary outcome, exact t for a continuous one — and `ci = "all"` extends them
   to every estimable row.
+* `coreact_outcome_pipeline()` runs the outcome association from files: it
+  reads the results `coreact_pipeline()` wrote, rebuilds the inputs from their
+  provenance sidecar, reads the outcome from a one-row-per-sample TSV (columns
+  by name or index), and writes the table with a sidecar of the settings used.
 
 * Results record how they were computed. `run_coreact()` attaches a
   `provenance` attribute holding the family size, the number of samples, the

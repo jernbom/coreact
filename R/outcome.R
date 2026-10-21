@@ -193,11 +193,7 @@ run_coreact_outcome <- function(res,
     stop("'covariates' is reserved for covariate adjustment, which is not yet available; it must be NULL.")
   }
   contrasts <- validate_contrasts(contrasts)
-  if (!is.character(fdr_method) || length(fdr_method) != 1 ||
-        !fdr_method %in% stats::p.adjust.methods) {
-    stop(sprintf("'fdr_method' must be one of %s.",
-                 paste(sprintf("\"%s\"", stats::p.adjust.methods), collapse = ", ")))
-  }
+  validate_fdr_method(fdr_method)
   validate_parallel_args(n_cores, chunk_size)
 
   # --- 1. The result, its provenance and the objects it was computed on ---
@@ -354,6 +350,20 @@ validate_contrasts <- function(contrasts) {
                  paste(sprintf("\"%s\"", contrast_catalogue), collapse = ", ")))
   }
   contrast_catalogue[contrast_catalogue %in% contrasts]
+}
+
+#' Validate the Multiple-Testing Method (Internal)
+#'
+#' @param fdr_method A [stats::p.adjust()] method name.
+#' @return `NULL`, invisibly.
+#' @keywords internal
+validate_fdr_method <- function(fdr_method) {
+  if (!is.character(fdr_method) || length(fdr_method) != 1 ||
+        !fdr_method %in% stats::p.adjust.methods) {
+    stop(sprintf("'fdr_method' must be one of %s.",
+                 paste(sprintf("\"%s\"", stats::p.adjust.methods), collapse = ", ")))
+  }
+  invisible(NULL)
 }
 
 #' Validate a Resolved `near_nested_max` (Internal)
