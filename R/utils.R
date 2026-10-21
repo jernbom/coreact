@@ -91,6 +91,36 @@ with_prevalence_cutoffs <- function(obj, lo, hi) {
   obj
 }
 
+#' MD5 Hash of a Matrix's Contents (Internal)
+#'
+#' A check that an object holds exactly the data a result was computed on. It
+#' reads the matrix and leaves it unchanged: the hash covers the dimensions,
+#' the positions of the non-zero entries, and the row and column names, in the
+#' order they have.
+#'
+#' The same matrix gives the same hash on every platform and R version, so it
+#' is computed from a fixed binary encoding rather than from `serialize()`,
+#' whose bytes can differ for identical values. Stored zeros are dropped and
+#' the storage class is ignored, since neither changes the matrix; names are
+#' written as UTF-8 and integers little-endian.
+#'
+#' @param mat A matrix of class `Matrix`.
+#' @return String, the hexadecimal MD5 hash.
+#' @keywords internal
+matrix_md5 <- function(mat) {
+  mat <- Matrix::drop0(methods::as(mat, "CsparseMatrix"))
+  file <- tempfile()
+  on.exit(unlink(file))
+  con <- file(file, "wb")
+  writeBin(as.integer(dim(mat)), con, endian = "little")
+  writeBin(mat@p, con, endian = "little")
+  writeBin(mat@i, con, endian = "little")
+  writeBin(enc2utf8(as.character(rownames(mat))), con)
+  writeBin(enc2utf8(as.character(colnames(mat))), con)
+  close(con)
+  unname(tools::md5sum(file))
+}
+
 #' Validate Parallel-Execution Arguments (Internal)
 #'
 #' Shared by [run_coreact()] and [run_coreact_outcome()] so that both accept and

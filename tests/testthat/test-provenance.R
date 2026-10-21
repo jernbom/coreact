@@ -258,3 +258,53 @@ test_that("read_coreact_results() refuses files that are not coreact results", {
   expect_error(read_coreact_results(file.path(dir, "absent.tsv")), "File not found")
   expect_error(read_coreact_results(c("a", "b")), "single file path")
 })
+
+# --- The content hash ---
+
+test_that("the content hash is fixed across platforms and R versions", {
+  # Pinned: CI computes it on Linux, macOS and Windows. A non-ASCII name checks
+  # that names are hashed as UTF-8 everywhere.
+  m <- Matrix::sparseMatrix(i = c(1, 2, 3, 3), j = c(1, 3, 2, 4), x = 1, dims = c(3, 4),
+                            dimnames = list(c("A", "caf\u00e9", "PROT_1|GENE_A"), paste0("S", 1:4)))
+  expect_identical(matrix_md5(m), "38f0017dcbaf4351c05c86211c2b1db8")
+})
+
+test_that("the content hash sees the data, not how it is stored", {
+  m <- Matrix::sparseMatrix(i = c(1, 2, 3, 3), j = c(1, 3, 2, 4), x = 1, dims = c(3, 4),
+                            dimnames = list(c("A", "caf\u00e9", "C"), paste0("S", 1:4)))
+  h <- matrix_md5(m)
+
+  # The same matrix stored differently: an explicit zero, a pattern matrix, a
+  # name in another encoding
+  stored_zero <- Matrix::sparseMatrix(i = c(1, 1, 2, 3, 3), j = c(2, 1, 3, 2, 4), x = c(0, 1, 1, 1, 1),
+                                      dims = c(3, 4), dimnames = dimnames(m))
+  latin1 <- m
+  rownames(latin1)[2] <- iconv("caf\u00e9", "UTF-8", "latin1")
+  expect_identical(matrix_md5(stored_zero), h)
+  expect_identical(matrix_md5(methods::as(m, "nMatrix")), h)
+  expect_identical(matrix_md5(latin1), h)
+
+  # Any change to the data: a positive moved, a name changed, columns in
+  # another order (nothing is reordered before hashing)
+  moved <- m
+  moved[1, 1] <- 0
+  moved[1, 2] <- 1
+  renamed <- m
+  rownames(renamed)[1] <- "B"
+  expect_false(identical(matrix_md5(moved), h))
+  expect_false(identical(matrix_md5(renamed), h))
+  expect_false(identical(matrix_md5(m[, c(2, 1, 3, 4)]), h))
+  # Hashing leaves the matrix as it was
+  expect_identical(m, Matrix::sparseMatrix(i = c(1, 2, 3, 3), j = c(1, 3, 2, 4), x = 1, dims = c(3, 4),
+                                           dimnames = list(c("A", "caf\u00e9", "C"), paste0("S", 1:4))))
+})
+
+test_that("provenance records each side's content hash", {
+  withr::with_seed(31, {
+    o_x <- make_obj(5, 20, prefix = "X")
+    o_y <- make_obj(4, 20, prefix = "Y")
+  })
+  prov <- attr(suppressMessages(run_coreact(o_x, o_y, effect_filters = list())), "provenance")
+  expect_identical(prov$x_md5, matrix_md5(o_x$mat))
+  expect_identical(prov$y_md5, matrix_md5(o_y$mat))
+})

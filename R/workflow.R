@@ -423,8 +423,9 @@ coreact_pipeline <- function(paths,
 #'   computed: the coreact version, `within_library`, `n_samples`, `n_pairs`,
 #'   `max_p_val` and the effect-size thresholds (`effect_min_*`, `0` meaning
 #'   off). For each side (`x_*`, and `y_*` unless within a library) it records
-#'   the object's `name`, `n_features` and `n_positive` (positive cells), as
-#'   received, and the prevalence cutoffs it was filtered with as counts.
+#'   the object's `name`, `n_features`, `n_positive` (positive cells) and
+#'   `md5`, a hash of the matrix's contents, as received, and the prevalence
+#'   cutoffs it was filtered with as counts.
 #'   Cutoffs are `NA` when the object does not carry them, for example because
 #'   it was built directly rather than filtered by [coreact_pipeline()].
 #' @export
@@ -673,7 +674,8 @@ adjust_fdr <- function(res, n_pairs = attr(res, "n_pairs"), method = "BH") {
 #'
 #' @details
 #' Each side gets a fingerprint — object name, number of features, number of
-#' positive cells — that later steps can check an object against, and the
+#' positive cells, and an MD5 hash of the matrix's contents ([matrix_md5()])
+#' — that later steps can check an object against, and the
 #' prevalence cutoffs it was filtered with, as counts. Cutoffs are `NA` when
 #' the object does not carry them (it was never filtered, or was subset or
 #' combined since), which records them as unknown rather than as no filter.
@@ -687,9 +689,9 @@ record_provenance <- function(data_x, data_y, n_pairs, effect_filters, max_p_val
     cut <- attr(obj, "prevalence_cutoffs")
     if (is.null(cut)) cut <- c(min = NA_real_, max = NA_real_)
     stats::setNames(
-      list(obj$name, as.numeric(nrow(obj$mat)), as.numeric(sum(obj$mat)),
+      list(obj$name, as.numeric(nrow(obj$mat)), as.numeric(sum(obj$mat)), matrix_md5(obj$mat),
            unname(cut[["min"]]), unname(cut[["max"]])),
-      paste0(tag, c("_name", "_n_features", "_n_positive",
+      paste0(tag, c("_name", "_n_features", "_n_positive", "_md5",
                     "_min_prevalence_count", "_max_prevalence_count"))
     )
   }

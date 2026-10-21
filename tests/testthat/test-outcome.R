@@ -156,19 +156,43 @@ test_that("data_x and data_y swapped are caught even under row-number IDs", {
   b <- make("B", 0.5)
   res <- suppressMessages(run_coreact(a, b, effect_filters = list()))
   o <- stats::setNames(stats::rbinom(60, 1, 0.5), paste0("S", 1:60))
-  expect_error(run_coreact_outcome(res, b, a, outcome = o), "is not the object this result was computed on")
+  expect_error(run_coreact_outcome(res, b, a, outcome = o), "is not the data this result was computed on")
+})
+
+test_that("an object with the recorded name and counts but other contents is refused", {
+  # One positive moved to another sample: name, size and number of positives
+  # all match the record, so only the content hash can tell
+  d <- outcome_fixture(seed = 22)
+  mat <- as.matrix(d$x$mat)
+  row <- which(rowSums(mat) > 0 & rowSums(mat) < ncol(mat))[1]
+  from <- which(mat[row, ] == 1)[1]
+  to <- which(mat[row, ] == 0)[1]
+  mat[row, c(from, to)] <- c(0, 1)
+  edited <- new_coreact_data(mat, d$x$meta, name = d$x$name)
+  expect_equal(sum(edited$mat), sum(d$x$mat))
+  expect_error(run_coreact_outcome(d$res, edited, d$y, outcome = d$binary),
+               "same name and counts as recorded, but different contents")
 })
 
 test_that("objects filtered differently from those of the result are refused", {
   d <- outcome_fixture(seed = 13)
   expect_error(run_coreact_outcome(d$res, d$x[-1, ], d$y, outcome = d$binary), "data_x")
 
-  # Same name, size and positive cells, rows in another order: only the
-  # index check can tell, and it does
+  # Same name, size and positive cells, rows in another order: the content
+  # hash tells
   perm <- rev(seq_len(nrow(d$x$mat)))
   reordered <- new_coreact_data(d$x$mat[perm, ], d$x$meta[perm, , drop = FALSE], name = d$x$name)
   expect_error(run_coreact_outcome(d$res, reordered, d$y, outcome = d$binary),
-               "indices point at")
+               "different contents")
+})
+
+test_that("a result whose indices were edited is refused, naming the pair", {
+  # The objects are right; the result is not: two rows' idx_x exchanged
+  d <- outcome_fixture(seed = 23)
+  edited <- d$res
+  rows <- which(edited$idx_x != edited$idx_x[1])[1]
+  edited$idx_x[c(1, rows)] <- edited$idx_x[c(rows, 1)]
+  expect_error(run_coreact_outcome(edited, d$x, d$y, outcome = d$binary), "indices point at")
 })
 
 test_that("the pairs analysed are the ones named in the result", {

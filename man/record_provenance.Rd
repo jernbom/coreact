@@ -24,7 +24,8 @@ sidecar without restructuring.
 }
 \details{
 Each side gets a fingerprint — object name, number of features, number of
-positive cells — that later steps can check an object against, and the
+positive cells, and an MD5 hash of the matrix's contents (\code{\link[=matrix_md5]{matrix_md5()}})
+— that later steps can check an object against, and the
 prevalence cutoffs it was filtered with, as counts. Cutoffs are \code{NA} when
 the object does not carry them (it was never filtered, or was subset or
 combined since), which records them as unknown rather than as no filter.
