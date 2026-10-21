@@ -14,7 +14,9 @@ test_that("the output is rectangular, with the documented columns and types", {
   expect_equal(ncol(out), 24)
   # Every contrast for every pair, none dropped
   expect_equal(nrow(out), 7 * nrow(d$res))
-  expect_true(all(is.na(out$ci_lo)) && all(is.na(out$ci_hi)))
+  # By default only tested rows get intervals
+  expect_identical(attr(out, "ci"), "tested")
+  expect_true(all(is.na(out$ci_lo[out$role == "reported"])))
 })
 
 test_that("only tested rows carry tests, and p_adj adjusts over them alone", {
@@ -260,7 +262,7 @@ test_that("the outcome is checked on the analysis sample", {
 test_that("invalid arguments are refused before any fitting", {
   d <- outcome_fixture(seed = 20)
   run <- function(...) run_coreact_outcome(d$res, d$x, d$y, outcome = d$binary, ...)
-  expect_error(run(ci = "bogus"), "ci")
+  expect_error(run(ci = "bogus"), "should be one of")
   expect_error(run(covariates = data.frame(a = 1)), "covariates")
   expect_error(run(contrasts = "12_vs_00"), "Unknown contrast")
   expect_error(run(contrasts = character(0)), "non-empty")

@@ -313,6 +313,61 @@ contrast_test <- function(fit, contrast, outcome_type) {
   list(statistic = stat, p = stats::pf(stat, 1, df1, lower.tail = FALSE))
 }
 
+#' Confidence Interval for One Contrast (Internal)
+#'
+#' @description
+#' 95% intervals consistent with the tests: they exclude zero exactly when the
+#' test's two-sided p-value is below 0.05.
+#'
+#' @details
+#' Binary outcome: a profile-likelihood interval, never a Wald one. Profiling
+#' works on coefficients, not on combinations of them, so the cell-means fit
+#' is refitted under a coding in which the contrast is a single coefficient:
+#' treatment coding with the contrast's second cell as baseline for `a_vs_b`,
+#' and the `x:y` term of `~ x * y` for the interaction. If profiling fails,
+#' the interval is `NA`.
+#'
+#' Continuous outcome: the exact t interval `beta +/- qt(0.975, df) * se`,
+#' which is what `confint()` returns on such a refit, computed directly. It
+#' rests on the same pooled residual standard deviation as the F test.
+#'
+#' Only called for estimable contrasts. A separated row has no interval in
+#' this version: profiling a diverging coefficient gives nonsense bounds.
+#'
+#' @param fit From [fit_cell_means()].
+#' @param contrast Contrast name.
+#' @param outcome_type `"binary"` or `"continuous"`.
+#' @param beta,se The contrast's estimate and standard error.
+#' @return Numeric vector `c(lo, hi)`.
+#' @keywords internal
+contrast_interval <- function(fit, contrast, outcome_type, beta, se) {
+  if (outcome_type == "continuous") {
+    half <- stats::qt(0.975, stats::df.residual(fit$model)) * se
+    return(c(beta - half, beta + half))
+  }
+
+  data <- fit$data
+  if (contrast == "interaction") {
+    label <- as.character(data$g)
+    data$x_ <- as.integer(substr(label, 1, 1))
+    data$y_ <- as.integer(substr(label, 2, 2))
+    formula <- outcome ~ x_ * y_
+    coef <- "x_:y_"
+  } else {
+    cells <- strsplit(contrast, "_vs_", fixed = TRUE)[[1]]
+    data$g <- stats::relevel(data$g, ref = cells[2])
+    formula <- outcome ~ g
+    coef <- paste0("g", cells[1])
+  }
+  model <- fit_model(formula, data, "binary")
+  bounds <- tryCatch(
+    # confint() profiles the likelihood for a glm, and announces it
+    suppressWarnings(suppressMessages(stats::confint(model, parm = coef, level = 0.95))),
+    error = function(e) c(NA_real_, NA_real_)
+  )
+  unname(as.numeric(bounds))
+}
+
 #' Effective Sample Size of a Contrast (Internal)
 #'
 #' `1 / sum(w_k^2 / n_k)`, the size of a single group whose mean would have the
@@ -355,10 +410,12 @@ n_eff_outcome <- function(w, counts8) {
 #' @param outcome_type `"binary"` or `"continuous"`.
 #' @param near_nested_max See [classify_occupancy()].
 #' @param contrasts Contrasts to report, before the tested ones are added.
+#' @param ci Which estimable rows get an interval: `"tested"`, `"all"` or
+#'   `"none"`.
 #' @return A list of equal-length columns, one element per emitted contrast,
 #'   in catalogue order. Pair identity and `n_used` are added by the caller.
 #' @keywords internal
-analyse_pair <- function(x, y, outcome, outcome_type, near_nested_max, contrasts) {
+analyse_pair <- function(x, y, outcome, outcome_type, near_nested_max, contrasts, ci = "none") {
   cell <- 1L + as.integer(x) + 2L * as.integer(y)
   n <- cell_counts(cell)
   cls <- classify_occupancy(n, near_nested_max)
@@ -375,7 +432,7 @@ analyse_pair <- function(x, y, outcome, outcome_type, near_nested_max, contrasts
   active <- contrast_catalogue[contrast_catalogue %in% union(cls$tested, contrasts)]
   k <- length(active)
 
-  beta <- se <- n_eff_col <- n_eff_o <- statistic <- p_val <- rep(NA_real_, k)
+  beta <- se <- ci_lo <- ci_hi <- n_eff_col <- n_eff_o <- statistic <- p_val <- rep(NA_real_, k)
   est <- character(k)
   df <- rep(NA_integer_, k)
   role <- ifelse(active %in% cls$tested, "tested", "reported")
@@ -396,6 +453,13 @@ analyse_pair <- function(x, y, outcome, outcome_type, near_nested_max, contrasts
       e <- contrast_estimate(fit$model, w, n, zero_se = flat)
       beta[i] <- e$beta
       se[i] <- e$se
+      # Each interval costs a refit and a profile, several times the fit and
+      # test, hence the choice of rows
+      if (ci == "all" || (ci == "tested" && role[i] == "tested")) {
+        bounds <- contrast_interval(fit, active[i], outcome_type, e$beta, e$se)
+        ci_lo[i] <- bounds[1]
+        ci_hi[i] <- bounds[2]
+      }
     } else if (est[i] == "unbounded_positive") {
       beta[i] <- Inf
       se[i] <- Inf
@@ -423,7 +487,7 @@ analyse_pair <- function(x, y, outcome, outcome_type, near_nested_max, contrasts
     m_off = rep(as.integer(cls$m_off), k),
     occupancy_class = rep(cls$class, k),
     contrast = active, role = role,
-    beta = beta, se = se,
+    beta = beta, se = se, ci_lo = ci_lo, ci_hi = ci_hi,
     beta_estimability = est,
     n_eff = n_eff_col, n_eff_outcome = n_eff_o,
     statistic = statistic, df = df, p_val = p_val,

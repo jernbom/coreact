@@ -14,7 +14,7 @@ run_coreact_outcome(
   near_nested_max = 10,
   contrasts = c("interaction", "11_vs_10", "11_vs_01", "11_vs_00", "10_vs_00",
     "01_vs_00", "10_vs_01"),
-  ci = "none",
+  ci = c("tested", "all", "none"),
   fdr_method = "BH",
   n_cores = 1,
   chunk_size = NULL
@@ -53,8 +53,11 @@ from runs with different values are not comparable.}
 \code{"10_vs_01"}. Each pair's tested contrasts are always added, so narrowing
 this never removes a hypothesis under test.}
 
-\item{ci}{Profile confidence intervals. Only \code{"none"} is available in this
-version; \code{ci_lo} and \code{ci_hi} are \code{NA}.}
+\item{ci}{Which rows get a 95\% confidence interval: \code{"tested"} (the default)
+for tested rows only, \code{"all"} for every estimable row, \code{"none"} for none.
+On a binary outcome each interval is a profile-likelihood interval that
+costs several times the pair's fit and test, so \code{"all"} is markedly slower;
+see Intervals below.}
 
 \item{fdr_method}{Multiple-testing adjustment, any \code{\link[stats:p.adjust]{stats::p.adjust()}}
 method.}
@@ -122,7 +125,7 @@ interaction is found as readily as a positive one. Wald tests are not used:
 they lose power badly as a logistic fit approaches separation. Adjusted
 p-values are computed once over all tested rows of all pairs.
 
-The tested family mixes hypotheses, so \code{p_adj < 0.05} says that a \emph{pair} is
+The tested family mixes hypotheses, so \code{p_adj <= 0.05} says that a \emph{pair} is
 associated with the outcome, not that it has an interaction:
 \code{occupancy_class} and \code{contrast} say which claim a row supports. A
 \code{near_nested} pair's two tested rows are strongly correlated and may both be
@@ -142,6 +145,21 @@ using it are \code{not_identified}. A separated row keeps its p-value and stays
 in the family: separation damages the estimate, not the likelihood ratio,
 so significant rows with an infinite \code{beta} are expected. \code{n_eff} stays
 finite on such rows; it measures the predictor cells, which are intact.
+}
+
+\subsection{Intervals}{
+
+\code{ci_lo} and \code{ci_hi} bound a 95\% confidence interval that agrees with the
+test: it excludes zero exactly when the row's p-value is below 0.05. For a
+binary outcome it is a profile-likelihood interval, from a refit in which
+the contrast is a single coefficient; for a continuous outcome the exact t
+interval. Wald intervals (\verb{beta +/- 1.96 * se}) are not used. Rows without
+a finite estimate have no interval, and nor, for now, do separated rows:
+profiling a diverging coefficient gives meaningless bounds.
+
+A profile interval costs several times a pair's fit and test, which is why
+only tested rows get one by default. \code{ci = "all"} computes one for every
+estimable row, up to seven per pair; \code{"none"} skips them.
 }
 
 \subsection{Continuous outcomes}{

@@ -31,8 +31,11 @@
 #'   `"11_vs_10"`, `"11_vs_01"`, `"11_vs_00"`, `"10_vs_00"`, `"01_vs_00"`,
 #'   `"10_vs_01"`. Each pair's tested contrasts are always added, so narrowing
 #'   this never removes a hypothesis under test.
-#' @param ci Profile confidence intervals. Only `"none"` is available in this
-#'   version; `ci_lo` and `ci_hi` are `NA`.
+#' @param ci Which rows get a 95% confidence interval: `"tested"` (the default)
+#'   for tested rows only, `"all"` for every estimable row, `"none"` for none.
+#'   On a binary outcome each interval is a profile-likelihood interval that
+#'   costs several times the pair's fit and test, so `"all"` is markedly slower;
+#'   see Intervals below.
 #' @param fdr_method Multiple-testing adjustment, any [stats::p.adjust()]
 #'   method.
 #' @param n_cores,chunk_size As in [run_coreact()]: a fork cluster above one
@@ -68,7 +71,7 @@
 #' they lose power badly as a logistic fit approaches separation. Adjusted
 #' p-values are computed once over all tested rows of all pairs.
 #'
-#' The tested family mixes hypotheses, so `p_adj < 0.05` says that a *pair* is
+#' The tested family mixes hypotheses, so `p_adj <= 0.05` says that a *pair* is
 #' associated with the outcome, not that it has an interaction:
 #' `occupancy_class` and `contrast` say which claim a row supports. A
 #' `near_nested` pair's two tested rows are strongly correlated and may both be
@@ -87,6 +90,20 @@
 #' in the family: separation damages the estimate, not the likelihood ratio,
 #' so significant rows with an infinite `beta` are expected. `n_eff` stays
 #' finite on such rows; it measures the predictor cells, which are intact.
+#'
+#' ## Intervals
+#'
+#' `ci_lo` and `ci_hi` bound a 95% confidence interval that agrees with the
+#' test: it excludes zero exactly when the row's p-value is below 0.05. For a
+#' binary outcome it is a profile-likelihood interval, from a refit in which
+#' the contrast is a single coefficient; for a continuous outcome the exact t
+#' interval. Wald intervals (`beta +/- 1.96 * se`) are not used. Rows without
+#' a finite estimate have no interval, and nor, for now, do separated rows:
+#' profiling a diverging coefficient gives meaningless bounds.
+#'
+#' A profile interval costs several times a pair's fit and test, which is why
+#' only tested rows get one by default. `ci = "all"` computes one for every
+#' estimable row, up to seven per pair; `"none"` skips them.
 #'
 #' ## Continuous outcomes
 #'
@@ -164,16 +181,14 @@ run_coreact_outcome <- function(res,
                                 near_nested_max = 10,
                                 contrasts = c("interaction", "11_vs_10", "11_vs_01", "11_vs_00",
                                               "10_vs_00", "01_vs_00", "10_vs_01"),
-                                ci = "none",
+                                ci = c("tested", "all", "none"),
                                 fdr_method = "BH",
                                 n_cores = 1,
                                 chunk_size = NULL) {
 
   # --- 0. Arguments that need no data ---
   outcome_type <- match.arg(outcome_type)
-  if (!identical(ci, "none")) {
-    stop("Only ci = \"none\" is available in this version; profile intervals are not yet implemented.")
-  }
+  ci <- match.arg(ci)
   if (!is.null(covariates)) {
     stop("'covariates' is reserved for covariate adjustment, which is not yet available; it must be NULL.")
   }
@@ -276,7 +291,7 @@ run_coreact_outcome <- function(res,
     xs <- as.matrix(mat_x[idx_x[rows], , drop = FALSE])
     ys <- as.matrix(mat_y[idx_y[rows], , drop = FALSE])
     lapply(seq_along(rows), function(j) {
-      analyse_pair(xs[j, ], ys[j, ], outcome, outcome_type, near_nested_max, contrasts)
+      analyse_pair(xs[j, ], ys[j, ], outcome, outcome_type, near_nested_max, contrasts, ci)
     })
   }
   pieces <- map_pair_chunks(seq_len(nrow(res)), run_chunk, n_cores, chunk_size)
@@ -566,7 +581,7 @@ assemble_outcome <- function(pieces, pair, feature_x, feature_y, n_used) {
     contrast = factor(cols$contrast, levels = contrast_catalogue),
     role = factor(cols$role, levels = c("tested", "reported")),
     beta = cols$beta, se = cols$se,
-    ci_lo = rep(NA_real_, k), ci_hi = rep(NA_real_, k),
+    ci_lo = cols$ci_lo, ci_hi = cols$ci_hi,
     beta_estimability = factor(cols$beta_estimability, levels = estimability_levels),
     n_eff = cols$n_eff, n_eff_outcome = cols$n_eff_outcome,
     statistic = cols$statistic, df = cols$df, p_val = cols$p_val,
