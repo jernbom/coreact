@@ -19,12 +19,14 @@
   reads the results `coreact_pipeline()` wrote, rebuilds the inputs from their
   provenance sidecar, reads the outcome from a one-row-per-sample TSV (columns
   by name or index), and writes the table with a sidecar of the settings used.
-
+  Inputs that have moved since are found with `input_paths`; either way the
+  files read must hold the analysed data, down to an MD5 hash of the contents.
 * Results record how they were computed. `run_coreact()` attaches a
   `provenance` attribute holding the family size, the number of samples, the
   effect-size thresholds and `max_p_val`, whether the run was within-library,
   the coreact version, and for each input its name, feature count, number of
-  positive cells and the prevalence cutoffs it was filtered with, as counts.
+  positive cells, an MD5 hash of its contents, and the prevalence cutoffs it
+  was filtered with, as counts.
   `coreact_pipeline()` adds `fdr_threshold` and the import settings of each
   input, and writes the lot next to the results as `*_provenance.tsv`.
 * `read_coreact_results()` reads a results file back with the column types it

@@ -129,7 +129,8 @@
 #'
 #' `res` must carry the `provenance` attribute that [run_coreact()] attaches,
 #' which the package uses to check that `data_x` and `data_y` are the objects
-#' `res` was computed on and are given in the right order. You need not use it
+#' `res` was computed on and are given in the right order: by name, size,
+#' number of positive cells and an MD5 hash of their contents. You need not use it
 #' yourself. It is restored by [read_coreact_results()], but lost when results
 #' are read with `read_tsv()`, summarised or passed through base `merge()`.
 #'
@@ -382,16 +383,22 @@ check_near_nested_max <- function(value) {
 #' Check an Object Against Its Recorded Fingerprint (Internal)
 #'
 #' Compares the object's name, number of features and number of positive cells
-#' with those [run_coreact()] recorded for that side. Numbers are compared as
+#' with those [run_coreact()] recorded for that side, then the hash of its
+#' contents ([matrix_md5()]). The counts come first because a mismatch there
+#' says how the objects differ; the hash then catches what the counts miss, such
+#' as a positive moved from one sample to another. Numbers are compared as
 #' numbers: read back from a sidecar they may be double where they were
 #' integer.
 #'
 #' @param obj A `coreact_data` object.
 #' @param prov The provenance list.
 #' @param side `"x"` or `"y"`.
+#' @param what How to refer to the object in the error.
+#' @param remedy What to do about a mismatch, for the error.
 #' @return `NULL`, invisibly; errors on a mismatch.
 #' @keywords internal
-check_fingerprint <- function(obj, prov, side) {
+check_fingerprint <- function(obj, prov, side, what = sprintf("'data_%s'", side),
+                              remedy = "Pass the inputs given to run_coreact(), in the same order.") {
   rec <- function(field) prov[[paste0(side, "_", field)]]
   same_number <- function(a, b) length(b) == 1 && isTRUE(as.numeric(a) == as.numeric(b))
   problems <- c(
@@ -405,10 +412,12 @@ check_fingerprint <- function(obj, prov, side) {
       sprintf("%s positive cells where %s were recorded", format(sum(obj$mat)), format(rec("n_positive")))
     }
   )
+  if (length(problems) == 0 && !identical(matrix_md5(obj$mat), as.character(rec("md5")))) {
+    problems <- "the same name and counts as recorded, but different contents"
+  }
   if (length(problems) > 0) {
-    stop(sprintf(paste0("'data_%s' is not the object this result was computed on: %s. Pass ",
-                        "the inputs given to run_coreact(), in the same order."),
-                 side, paste(problems, collapse = "; ")))
+    stop(sprintf("%s is not the data this result was computed on: %s. %s",
+                 what, paste(problems, collapse = "; "), remedy))
   }
   invisible(NULL)
 }

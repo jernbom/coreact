@@ -16,15 +16,22 @@
 #' @param outcome_col Name or index of the outcome column in `outcome_path`.
 #' @param sample_id_col Name or index of the sample-ID column in `outcome_path`.
 #'   Default: the first column. IDs are read as text, so leading zeros survive.
+#' @param input_paths `NULL`, or the input files' current paths when they have
+#'   moved since [coreact_pipeline()] read them: X then Y, or one path for a
+#'   within-library result. By default the paths recorded in the provenance are
+#'   used. Either way the files must hold the data that was analysed, which is
+#'   checked.
 #' @inheritParams run_coreact_outcome
 #'
 #' @details
 #' The inputs are re-imported from the paths recorded in the provenance, with
 #' the recorded import settings, and filtered with the recorded prevalence
 #' bounds, which reproduces the objects [coreact_pipeline()] analysed. That is
-#' checked rather than assumed: [run_coreact_outcome()] compares each object
-#' with its recorded fingerprint and every pair's indices with its feature IDs.
-#' One recorded input path means a within-library result.
+#' checked rather than assumed: each object is compared with its recorded
+#' fingerprint — name, size, positive cells and a hash of its contents — and
+#' every pair's indices with its feature IDs. So a file edited since, or the
+#' wrong file given in `input_paths`, is refused. One recorded input path means
+#' a within-library result.
 #'
 #' The outcome file is one row per sample, transposed relative to the X and Y
 #' files, because a sample annotation mixes types and [data.table::fread()]
@@ -70,6 +77,7 @@ coreact_outcome_pipeline <- function(results_path,
                                      out_path,
                                      outcome_col,
                                      sample_id_col = 1,
+                                     input_paths = NULL,
                                      outcome_type = c("binary", "continuous"),
                                      near_nested_max = 10,
                                      contrasts = c("interaction", "11_vs_10", "11_vs_01", "11_vs_00",
@@ -86,6 +94,12 @@ coreact_outcome_pipeline <- function(results_path,
   }
   check_column_arg(outcome_col, "outcome_col")
   check_column_arg(sample_id_col, "sample_id_col")
+  if (!is.null(input_paths)) {
+    if (!is.character(input_paths) || !length(input_paths) %in% 1:2 || anyNA(input_paths)) {
+      stop("'input_paths' must be NULL or one or two file paths.")
+    }
+    for (p in input_paths) if (!file.exists(p)) stop(sprintf("File not found: %s", p))
+  }
   outcome_type <- match.arg(outcome_type)
   ci <- match.arg(ci)
   contrasts <- validate_contrasts(contrasts)
@@ -108,7 +122,27 @@ coreact_outcome_pipeline <- function(results_path,
 
   # --- 2. The results and the inputs they were computed on ---
   res <- read_coreact_results(results_path)
-  inputs <- rebuild_inputs(attr(res, "provenance"), n_cores = n_cores)
+  prov <- attr(res, "provenance")
+  n_inputs <- if (isTRUE(prov$within_library)) 1 else 2
+  if (!is.null(input_paths) && length(input_paths) != n_inputs) {
+    stop(sprintf("These results were computed from %d input(s), but 'input_paths' gives %d.",
+                 n_inputs, length(input_paths)))
+  }
+  inputs <- rebuild_inputs(prov, n_cores = n_cores, input_paths = input_paths)
+
+  # Check the rebuilt objects here, where the message can speak of files
+  remedy <- if (is.null(input_paths)) {
+    "The file has changed since coreact_pipeline() read it."
+  } else {
+    "Check 'input_paths': they must be the files coreact_pipeline() read, X first."
+  }
+  if (!is.null(inputs$y) && identical(inputs$x$mat, inputs$y$mat)) {
+    stop("The two inputs hold the same data. ", remedy)
+  }
+  for (side in c("x", "y")[seq_len(n_inputs)]) {
+    check_fingerprint(inputs[[side]], prov, side, remedy = remedy,
+                      what = sprintf("The %s input (%s)", toupper(side), inputs$paths[[side]]))
+  }
 
   # --- 3. The outcome, one row per sample ---
   outcome <- read_outcome_tsv(outcome_path, outcome_col, sample_id_col, n_cores = n_cores)
@@ -125,7 +159,8 @@ coreact_outcome_pipeline <- function(results_path,
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
   data.table::fwrite(out, file = out_path, sep = "\t", quote = FALSE)
   write_provenance_sidecar(
-    outcome_provenance(out, results_path, outcome_path, outcome_col, sample_id_col),
+    outcome_provenance(out, results_path, outcome_path, outcome_col, sample_id_col,
+                       input_paths = unname(inputs$paths)),
     out_path
   )
 
@@ -153,9 +188,12 @@ check_column_arg <- function(col, arg) {
 #'
 #' @param prov Provenance list of a [coreact_pipeline()] result.
 #' @param n_cores Threads for reading.
-#' @return List with `x` and `y` (`NULL` for a within-library result).
+#' @param input_paths `NULL`, or paths to read instead of the recorded ones,
+#'   X then Y.
+#' @return List with `x` and `y` (`NULL` for a within-library result), and
+#'   `paths`, the files read.
 #' @keywords internal
-rebuild_inputs <- function(prov, n_cores = 1) {
+rebuild_inputs <- function(prov, n_cores = 1, input_paths = NULL) {
   fields <- c("_path", "_input_name", "_meta_cols", "_sample_cols", "_feature_ids", "_binarize",
               "_min_prevalence", "_max_prevalence")
   needed <- c("within_library", "feature_id_sep", paste0("x", fields))
@@ -167,11 +205,15 @@ rebuild_inputs <- function(prov, n_cores = 1) {
                  paste(utils::head(absent, 3), collapse = ", ")))
   }
 
+  paths <- c(x = prov$x_path, y = if (isTRUE(prov$within_library)) NULL else prov$y_path)
+  if (!is.null(input_paths)) paths[] <- input_paths
+
   side <- function(tag) {
     get_field <- function(field) prov[[paste0(tag, "_", field)]]
-    path <- get_field("path")
+    path <- paths[[tag]]
     if (!file.exists(path)) {
-      stop(sprintf("The %s input these results were computed from is no longer at %s.",
+      stop(sprintf(paste0("The %s input these results were computed from is no longer at %s. ",
+                          "If it has moved, give its new path in 'input_paths'."),
                    toupper(tag), path))
     }
     obj <- import_coreact_tsv(path, meta_cols = get_field("meta_cols"),
@@ -183,7 +225,7 @@ rebuild_inputs <- function(prov, n_cores = 1) {
     filter_by_prevalence(obj, get_field("min_prevalence"), get_field("max_prevalence"))
   }
 
-  list(x = side("x"), y = if (isTRUE(prov$within_library)) NULL else side("y"))
+  list(x = side("x"), y = if (isTRUE(prov$within_library)) NULL else side("y"), paths = paths)
 }
 
 #' Read an Outcome From a One-Row-per-Sample TSV (Internal)
@@ -235,13 +277,16 @@ read_outcome_tsv <- function(path, outcome_col, sample_id_col, n_cores = 1) {
 #' @param out The table from [run_coreact_outcome()].
 #' @param results_path,outcome_path,outcome_col,sample_id_col As given to
 #'   [coreact_outcome_pipeline()].
+#' @param input_paths The input files actually read, X then Y.
 #' @return A flat named list for [write_provenance_sidecar()].
 #' @keywords internal
-outcome_provenance <- function(out, results_path, outcome_path, outcome_col, sample_id_col) {
+outcome_provenance <- function(out, results_path, outcome_path, outcome_col, sample_id_col,
+                               input_paths) {
   list(
     coreact_version = as.character(utils::packageVersion("coreact")),
     results_path = normalizePath(results_path, winslash = "/"),
     outcome_path = normalizePath(outcome_path, winslash = "/"),
+    input_paths = normalizePath(input_paths, winslash = "/"),
     outcome_col = outcome_col,
     sample_id_col = sample_id_col,
     outcome_type = attr(out, "outcome_type"),

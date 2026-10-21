@@ -4,13 +4,22 @@
 \alias{outcome_provenance}
 \title{Record How an Outcome Table Was Computed (Internal)}
 \usage{
-outcome_provenance(out, results_path, outcome_path, outcome_col, sample_id_col)
+outcome_provenance(
+  out,
+  results_path,
+  outcome_path,
+  outcome_col,
+  sample_id_col,
+  input_paths
+)
 }
 \arguments{
 \item{out}{The table from \code{\link[=run_coreact_outcome]{run_coreact_outcome()}}.}
 
 \item{results_path, outcome_path, outcome_col, sample_id_col}{As given to
 \code{\link[=coreact_outcome_pipeline]{coreact_outcome_pipeline()}}.}
+
+\item{input_paths}{The input files actually read, X then Y.}
 }
 \value{
 A flat named list for \code{\link[=write_provenance_sidecar]{write_provenance_sidecar()}}.

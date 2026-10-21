@@ -188,7 +188,8 @@ labels — \code{nested_y_in_x} against \code{nested_x_in_y}, \verb{11_vs_10} ag
 
 \code{res} must carry the \code{provenance} attribute that \code{\link[=run_coreact]{run_coreact()}} attaches,
 which the package uses to check that \code{data_x} and \code{data_y} are the objects
-\code{res} was computed on and are given in the right order. You need not use it
+\code{res} was computed on and are given in the right order: by name, size,
+number of positive cells and an MD5 hash of their contents. You need not use it
 yourself. It is restored by \code{\link[=read_coreact_results]{read_coreact_results()}}, but lost when results
 are read with \code{read_tsv()}, summarised or passed through base \code{merge()}.
 

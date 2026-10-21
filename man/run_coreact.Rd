@@ -51,8 +51,9 @@ The attribute \code{provenance} is a named list recording how the result was
 computed: the coreact version, \code{within_library}, \code{n_samples}, \code{n_pairs},
 \code{max_p_val} and the effect-size thresholds (\verb{effect_min_*}, \code{0} meaning
 off). For each side (\verb{x_*}, and \verb{y_*} unless within a library) it records
-the object's \code{name}, \code{n_features} and \code{n_positive} (positive cells), as
-received, and the prevalence cutoffs it was filtered with as counts.
+the object's \code{name}, \code{n_features}, \code{n_positive} (positive cells) and
+\code{md5}, a hash of the matrix's contents, as received, and the prevalence
+cutoffs it was filtered with as counts.
 Cutoffs are \code{NA} when the object does not carry them, for example because
 it was built directly rather than filtered by \code{\link[=coreact_pipeline]{coreact_pipeline()}}.
 }

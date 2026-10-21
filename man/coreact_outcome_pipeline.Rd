@@ -10,6 +10,7 @@ coreact_outcome_pipeline(
   out_path,
   outcome_col,
   sample_id_col = 1,
+  input_paths = NULL,
   outcome_type = c("binary", "continuous"),
   near_nested_max = 10,
   contrasts = c("interaction", "11_vs_10", "11_vs_01", "11_vs_00", "10_vs_00",
@@ -35,6 +36,12 @@ recording the settings used is written next to it.}
 
 \item{sample_id_col}{Name or index of the sample-ID column in \code{outcome_path}.
 Default: the first column. IDs are read as text, so leading zeros survive.}
+
+\item{input_paths}{\code{NULL}, or the input files' current paths when they have
+moved since \code{\link[=coreact_pipeline]{coreact_pipeline()}} read them: X then Y, or one path for a
+within-library result. By default the paths recorded in the provenance are
+used. Either way the files must hold the data that was analysed, which is
+checked.}
 
 \item{outcome_type}{\code{"binary"} (logistic model) or \code{"continuous"} (linear
 model).}
@@ -83,9 +90,11 @@ association and writes the table.
 The inputs are re-imported from the paths recorded in the provenance, with
 the recorded import settings, and filtered with the recorded prevalence
 bounds, which reproduces the objects \code{\link[=coreact_pipeline]{coreact_pipeline()}} analysed. That is
-checked rather than assumed: \code{\link[=run_coreact_outcome]{run_coreact_outcome()}} compares each object
-with its recorded fingerprint and every pair's indices with its feature IDs.
-One recorded input path means a within-library result.
+checked rather than assumed: each object is compared with its recorded
+fingerprint — name, size, positive cells and a hash of its contents — and
+every pair's indices with its feature IDs. So a file edited since, or the
+wrong file given in \code{input_paths}, is refused. One recorded input path means
+a within-library result.
 
 The outcome file is one row per sample, transposed relative to the X and Y
 files, because a sample annotation mixes types and \code{\link[data.table:fread]{data.table::fread()}}

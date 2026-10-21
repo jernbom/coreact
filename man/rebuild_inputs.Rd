@@ -4,15 +4,19 @@
 \alias{rebuild_inputs}
 \title{Rebuild the Inputs of a Coreact Result From Its Provenance (Internal)}
 \usage{
-rebuild_inputs(prov, n_cores = 1)
+rebuild_inputs(prov, n_cores = 1, input_paths = NULL)
 }
 \arguments{
 \item{prov}{Provenance list of a \code{\link[=coreact_pipeline]{coreact_pipeline()}} result.}
 
 \item{n_cores}{Threads for reading.}
+
+\item{input_paths}{\code{NULL}, or paths to read instead of the recorded ones,
+X then Y.}
 }
 \value{
-List with \code{x} and \code{y} (\code{NULL} for a within-library result).
+List with \code{x} and \code{y} (\code{NULL} for a within-library result), and
+\code{paths}, the files read.
 }
 \description{
 Re-imports each recorded input file with its recorded import settings and

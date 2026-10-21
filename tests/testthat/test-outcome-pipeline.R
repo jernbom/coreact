@@ -191,3 +191,84 @@ test_that("an input that has moved is named in the error", {
                                                          outcome_col = "status")),
                "Y input .* is no longer at")
 })
+
+# --- Inputs that have moved, or changed ---
+
+test_that("input_paths finds inputs that have moved, with the same result", {
+  dir <- withr::local_tempdir()
+  f <- pipeline_fixture(dir, seed = 11)
+  outcome_file <- write_outcome_tsv(f$ids, f$outcome, dir)
+  moved <- file.path(dir, "elsewhere")
+  dir.create(moved)
+  new_x <- file.path(moved, "x.tsv")
+  new_y <- file.path(moved, "y.tsv")
+  file.rename(c(f$path_x, f$path_y), c(new_x, new_y))
+  out_path <- file.path(dir, "a.tsv")
+
+  out <- suppressMessages(coreact_outcome_pipeline(f$results, outcome_file, out_path,
+                                                   outcome_col = "status",
+                                                   input_paths = c(new_x, new_y)))
+  x <- in_memory_inputs(new_x, 0.1)
+  y <- in_memory_inputs(new_y, 12)
+  expect_identical(out, suppressMessages(run_coreact_outcome(f$res, x, y, outcome = f$outcome)))
+
+  # The files actually read are recorded with the output
+  prov <- read_provenance_sidecar(sidecar_path(out_path, "provenance"))
+  expect_identical(prov$input_paths, normalizePath(c(new_x, new_y), winslash = "/"))
+})
+
+test_that("input_paths that are not the analysed files are refused", {
+  dir <- withr::local_tempdir()
+  f <- pipeline_fixture(dir, seed = 12)
+  outcome_file <- write_outcome_tsv(f$ids, f$outcome, dir)
+  run <- function(paths) {
+    suppressMessages(coreact_outcome_pipeline(f$results, outcome_file, file.path(dir, "a.tsv"),
+                                              outcome_col = "status", input_paths = paths))
+  }
+  expect_error(run(c(f$path_y, f$path_x)), "Check 'input_paths'")
+  expect_error(run(c(f$path_x, f$path_x)), "The two inputs hold the same data")
+  expect_error(run(f$path_x), "computed from 2 input")
+  expect_error(run(c(f$path_x, file.path(dir, "absent.tsv"))), "File not found")
+  expect_error(run(1), "one or two file paths")
+})
+
+test_that("a within-library result takes a single input path", {
+  dir <- withr::local_tempdir()
+  withr::local_seed(13)
+  path <- write_pipeline_tsv(10, 60, prefix = "F", dir = dir)
+  results <- file.path(dir, "within.tsv")
+  suppressMessages(coreact_pipeline(path, results, meta_cols = 1:2, fdr_threshold = 1))
+  ids <- colnames(suppressMessages(import_coreact_tsv(path, meta_cols = 1:2))$mat)
+  outcome_file <- write_outcome_tsv(ids, stats::rbinom(60, 1, 0.5), dir)
+  new_path <- file.path(dir, "moved.tsv")
+  file.rename(path, new_path)
+
+  out <- suppressMessages(coreact_outcome_pipeline(results, outcome_file, file.path(dir, "a.tsv"),
+                                                   outcome_col = "status", ci = "none",
+                                                   input_paths = new_path))
+  expect_true(attr(out, "within_library"))
+  expect_error(suppressMessages(coreact_outcome_pipeline(results, outcome_file, file.path(dir, "a.tsv"),
+                                                         outcome_col = "status",
+                                                         input_paths = c(new_path, new_path))),
+               "computed from 1 input")
+})
+
+test_that("an input file edited since the analysis is refused", {
+  dir <- withr::local_tempdir()
+  f <- pipeline_fixture(dir, seed = 14)
+  outcome_file <- write_outcome_tsv(f$ids, f$outcome, dir)
+
+  # Move one positive between two samples of the most prevalent feature: its
+  # prevalence, and so the filter and every count, stay the same
+  tab <- utils::read.delim(f$path_x, check.names = FALSE)
+  samples <- setdiff(names(tab), c("FeatureID", "Desc"))
+  row <- which.max(rowSums(tab[samples]))
+  from <- samples[tab[row, samples] == 1][1]
+  to <- samples[tab[row, samples] == 0][1]
+  tab[row, c(from, to)] <- c(0, 1)
+  utils::write.table(tab, f$path_x, sep = "\t", row.names = FALSE, quote = FALSE)
+
+  expect_error(suppressMessages(coreact_outcome_pipeline(f$results, outcome_file, file.path(dir, "a.tsv"),
+                                                         outcome_col = "status")),
+               "different contents. The file has changed since coreact_pipeline")
+})

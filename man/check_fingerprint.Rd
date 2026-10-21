@@ -4,7 +4,13 @@
 \alias{check_fingerprint}
 \title{Check an Object Against Its Recorded Fingerprint (Internal)}
 \usage{
-check_fingerprint(obj, prov, side)
+check_fingerprint(
+  obj,
+  prov,
+  side,
+  what = sprintf("'data_\%s'", side),
+  remedy = "Pass the inputs given to run_coreact(), in the same order."
+)
 }
 \arguments{
 \item{obj}{A \code{coreact_data} object.}
@@ -12,13 +18,20 @@ check_fingerprint(obj, prov, side)
 \item{prov}{The provenance list.}
 
 \item{side}{\code{"x"} or \code{"y"}.}
+
+\item{what}{How to refer to the object in the error.}
+
+\item{remedy}{What to do about a mismatch, for the error.}
 }
 \value{
 \code{NULL}, invisibly; errors on a mismatch.
 }
 \description{
 Compares the object's name, number of features and number of positive cells
-with those \code{\link[=run_coreact]{run_coreact()}} recorded for that side. Numbers are compared as
+with those \code{\link[=run_coreact]{run_coreact()}} recorded for that side, then the hash of its
+contents (\code{\link[=matrix_md5]{matrix_md5()}}). The counts come first because a mismatch there
+says how the objects differ; the hash then catches what the counts miss, such
+as a positive moved from one sample to another. Numbers are compared as
 numbers: read back from a sidecar they may be double where they were
 integer.
 }
