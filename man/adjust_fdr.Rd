@@ -10,7 +10,8 @@ adjust_fdr(res, n_pairs = attr(res, "n_pairs"), method = "BH")
 \item{res}{A tibble returned by \code{\link[=run_coreact]{run_coreact()}}.}
 
 \item{n_pairs}{Number of tested pairs. Defaults to the \code{n_pairs} attribute
-set by \code{\link[=run_coreact]{run_coreact()}}; supply it explicitly if the attribute was lost.}
+set by \code{\link[=run_coreact]{run_coreact()}}; supply it explicitly if the attribute was lost.
+\code{\link[=read_coreact_results]{read_coreact_results()}} restores it for results read from disk.}
 
 \item{method}{Adjustment method passed to \code{\link[stats:p.adjust]{stats::p.adjust()}}.}
 }

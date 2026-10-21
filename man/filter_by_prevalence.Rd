@@ -2,24 +2,42 @@
 % Please edit documentation in R/utils.R
 \name{filter_by_prevalence}
 \alias{filter_by_prevalence}
-\title{Filter Coreact Data by Marginal Prevalence (Internal)}
+\title{Filter Coreact Data by Marginal Prevalence}
 \usage{
-filter_by_prevalence(obj, min_thresh = 0, max_thresh = NULL)
+filter_by_prevalence(obj, min_prevalence = 0, max_prevalence = NULL)
 }
 \arguments{
 \item{obj}{A \code{coreact_data} object.}
 
-\item{min_thresh}{Numeric. Minimum prevalence; \code{0} disables the lower bound.}
+\item{min_prevalence}{Numeric. Minimum prevalence: a fraction of the samples
+if \verb{< 1}, an absolute count if \verb{>= 1}; \code{0} disables the lower bound.}
 
-\item{max_thresh}{Numeric or \code{NULL}. Maximum prevalence; \code{NULL} disables
-the upper bound.}
+\item{max_prevalence}{Numeric or \code{NULL}. Maximum prevalence, with the same
+fraction/count convention; \code{NULL} disables the upper bound.}
 }
 \value{
-A subsetted \code{coreact_data} object.
+A subsetted \code{coreact_data} object carrying the attribute
+\code{prevalence_cutoffs}: the bounds applied, resolved to counts, as
+\code{c(min = , max = )}, with \code{max = Inf} when there is no upper bound. Fractions
+are resolved with \code{ceiling()} for the lower bound and \code{floor()} for the
+upper, so the counts reproduce the filter exactly on the same samples.
+
+The attribute describes this object only. Any later subsetting or \code{cbind()}
+builds a new object without it, and \code{\link[=run_coreact]{run_coreact()}} then records the
+cutoffs as unknown rather than as no filter.
 }
 \description{
-Retains the features of a coreact_data object whose prevalence (number of
-positive samples) lies within \verb{[min_thresh, max_thresh]}. Each threshold is
-a fraction of the samples if \verb{< 1} and an absolute count if \verb{>= 1}.
+Retains the features of a \code{coreact_data} object whose prevalence (number of
+positive samples) lies within \verb{[min_prevalence, max_prevalence]}: step 1 of
+\code{\link[=coreact_pipeline]{coreact_pipeline()}}, for objects already in memory. Use it, rather than
+subsetting by hand, so that the bounds applied are recorded with the object
+and carried into \code{\link[=run_coreact]{run_coreact()}}'s provenance.
 }
-\keyword{internal}
+\examples{
+path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+
+x_common <- filter_by_prevalence(x, min_prevalence = 0.2)   # in at least 20\% of samples
+dim(x_common)
+attr(x_common, "prevalence_cutoffs")                       # the bounds applied, as counts
+}

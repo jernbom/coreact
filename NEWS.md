@@ -1,3 +1,48 @@
+# coreact 1.5.0
+
+## New features
+
+* `run_coreact_outcome()` associates each pair in a coreact result with a
+  binary or continuous sample-level outcome. Each pair is classified by which
+  cells of its 2x2 table are occupied, and tested on the contrast that
+  occupancy supports: the interaction where all four cells are occupied, a
+  conditional contrast for nested pairs, double-positive against
+  double-negative for identical features. The choice never looks at the
+  outcome. Tests are likelihood ratio (binary) or exact F (continuous) tests,
+  adjusted once over all tested rows; every estimable contrast is reported.
+  Separated logistic fits report infinite estimates with their p-values kept.
+  The continuous path assumes the four cells are equally variable. Tested rows
+  get 95% intervals that agree with their tests — profile likelihood for a
+  binary outcome, exact t for a continuous one — and `ci = "all"` extends them
+  to every estimable row.
+* `coreact_outcome_pipeline()` runs the outcome association from files: it
+  reads the results `coreact_pipeline()` wrote, rebuilds the inputs from their
+  provenance sidecar, reads the outcome from a one-row-per-sample TSV (columns
+  by name or index), and writes the table with a sidecar of the settings used.
+  Inputs that have moved since are found with `input_paths`; either way the
+  files read must hold the analysed data, down to an MD5 hash of the contents.
+* Results record how they were computed. `run_coreact()` attaches a
+  `provenance` attribute holding the family size, the number of samples, the
+  effect-size thresholds and `max_p_val`, whether the run was within-library,
+  the coreact version, and for each input its name, feature count, number of
+  positive cells, an MD5 hash of its contents, and the prevalence cutoffs it
+  was filtered with, as counts.
+  `coreact_pipeline()` adds `fdr_threshold` and the import settings of each
+  input, and writes the lot next to the results as `*_provenance.tsv`.
+* `filter_by_prevalence()` is exported: step 1 of `coreact_pipeline()` for
+  objects in memory, with the pipeline's argument names. It records the bounds
+  it applied on the object it returns, as counts, so that they reach
+  `run_coreact()`'s provenance.
+* `read_coreact_results()` reads a results file back with the column types it
+  had in memory and with its `n_pairs` and `provenance` attributes, so
+  `adjust_fdr()` can be applied to results from disk. It could not before,
+  because `n_pairs` did not survive being written.
+
+## Changes to existing behaviour
+
+* `coreact_pipeline()` writes a third sidecar, `*_provenance.tsv`, beside the
+  results and the two metadata files.
+
 # coreact 1.4.0
 
 ## New features
