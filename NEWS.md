@@ -11,7 +11,10 @@
   outcome. Tests are likelihood ratio (binary) or exact F (continuous) tests,
   adjusted once over all tested rows; every estimable contrast is reported.
   Separated logistic fits report infinite estimates with their p-values kept.
-  The continuous path assumes the four cells are equally variable.
+  The continuous path assumes the four cells are equally variable. Tested rows
+  get 95% intervals that agree with their tests — profile likelihood for a
+  binary outcome, exact t for a continuous one — and `ci = "all"` extends them
+  to every estimable row.
 
 * Results record how they were computed. `run_coreact()` attaches a
   `provenance` attribute holding the family size, the number of samples, the

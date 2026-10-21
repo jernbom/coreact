@@ -322,8 +322,10 @@ test_that("swapping x and y exchanges the directional contrasts and nothing else
   res_ba <- suppressMessages(run_coreact(d$y, d$x, effect_filters = list()))
   for (type in c("binary", "continuous")) {
     o <- d[[type]]
-    ab <- suppressMessages(run_coreact_outcome(d$res, d$x, d$y, outcome = o, outcome_type = type))
-    ba <- suppressMessages(run_coreact_outcome(res_ba, d$y, d$x, outcome = o, outcome_type = type))
+    ab <- suppressMessages(run_coreact_outcome(d$res, d$x, d$y, outcome = o, outcome_type = type,
+                                               ci = "all"))
+    ba <- suppressMessages(run_coreact_outcome(res_ba, d$y, d$x, outcome = o, outcome_type = type,
+                                               ci = "all"))
 
     # Ties in the thin cell are the one documented asymmetry; leave them out
     ties <- unique(paste(ab$feature_x, ab$feature_y)[ab$occupancy_class == "near_nested" & ab$n01 == ab$n10])
@@ -349,6 +351,10 @@ test_that("swapping x and y exchanges the directional contrasts and nothing else
     expect_equal(ab$se, ba$se, tolerance = 1e-7, info = type)
     expect_equal(ab$p_val, ba$p_val, tolerance = 1e-7, info = type)
     expect_equal(ab$p_adj, ba$p_adj, tolerance = 1e-7, info = type)
+    # A sign change also swaps the interval's ends
+    flip <- ab$contrast == "10_vs_01"
+    expect_equal(ifelse(flip, -ba$ci_hi, ba$ci_lo), ab$ci_lo, tolerance = 1e-5, info = type)
+    expect_equal(ifelse(flip, -ba$ci_lo, ba$ci_hi), ab$ci_hi, tolerance = 1e-5, info = type)
   }
 })
 

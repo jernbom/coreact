@@ -4,7 +4,15 @@
 \alias{analyse_pair}
 \title{Analyse One Pair (Internal)}
 \usage{
-analyse_pair(x, y, outcome, outcome_type, near_nested_max, contrasts)
+analyse_pair(
+  x,
+  y,
+  outcome,
+  outcome_type,
+  near_nested_max,
+  contrasts,
+  ci = "none"
+)
 }
 \arguments{
 \item{x, y}{0/1 feature vectors on the analysis sample.}
@@ -16,6 +24,9 @@ analyse_pair(x, y, outcome, outcome_type, near_nested_max, contrasts)
 \item{near_nested_max}{See \code{\link[=classify_occupancy]{classify_occupancy()}}.}
 
 \item{contrasts}{Contrasts to report, before the tested ones are added.}
+
+\item{ci}{Which estimable rows get an interval: \code{"tested"}, \code{"all"} or
+\code{"none"}.}
 }
 \value{
 A list of equal-length columns, one element per emitted contrast,
