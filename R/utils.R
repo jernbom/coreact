@@ -18,16 +18,19 @@ resolve_xy_args <- function(val, arg_name) {
   }
 }
 
-#' Filter Coreact Data by Marginal Prevalence (Internal)
+#' Filter Coreact Data by Marginal Prevalence
 #'
-#' Retains the features of a coreact_data object whose prevalence (number of
-#' positive samples) lies within `[min_thresh, max_thresh]`. Each threshold is
-#' a fraction of the samples if `< 1` and an absolute count if `>= 1`.
+#' Retains the features of a `coreact_data` object whose prevalence (number of
+#' positive samples) lies within `[min_prevalence, max_prevalence]`: step 1 of
+#' [coreact_pipeline()], for objects already in memory. Use it, rather than
+#' subsetting by hand, so that the bounds applied are recorded with the object
+#' and carried into [run_coreact()]'s provenance.
 #'
 #' @param obj A `coreact_data` object.
-#' @param min_thresh Numeric. Minimum prevalence; `0` disables the lower bound.
-#' @param max_thresh Numeric or `NULL`. Maximum prevalence; `NULL` disables
-#'   the upper bound.
+#' @param min_prevalence Numeric. Minimum prevalence: a fraction of the samples
+#'   if `< 1`, an absolute count if `>= 1`; `0` disables the lower bound.
+#' @param max_prevalence Numeric or `NULL`. Maximum prevalence, with the same
+#'   fraction/count convention; `NULL` disables the upper bound.
 #' @return A subsetted `coreact_data` object carrying the attribute
 #'   `prevalence_cutoffs`: the bounds applied, resolved to counts, as
 #'   `c(min = , max = )`, with `max = Inf` when there is no upper bound. Fractions
@@ -37,25 +40,38 @@ resolve_xy_args <- function(val, arg_name) {
 #'   The attribute describes this object only. Any later subsetting or `cbind()`
 #'   builds a new object without it, and [run_coreact()] then records the
 #'   cutoffs as unknown rather than as no filter.
-#' @keywords internal
-filter_by_prevalence <- function(obj, min_thresh = 0, max_thresh = NULL) {
-  if (!is.numeric(min_thresh) || length(min_thresh) != 1 || is.na(min_thresh)) {
+#' @export
+#' @examples
+#' path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
+#' x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
+#'
+#' x_common <- filter_by_prevalence(x, min_prevalence = 0.2)   # in at least 20% of samples
+#' dim(x_common)
+#' attr(x_common, "prevalence_cutoffs")                       # the bounds applied, as counts
+filter_by_prevalence <- function(obj, min_prevalence = 0, max_prevalence = NULL) {
+  if (!is.numeric(min_prevalence) || length(min_prevalence) != 1 || is.na(min_prevalence)) {
     stop("Minimum prevalence threshold must be a single non-NA number.")
   }
-  if (!is.null(max_thresh) &&
-        (!is.numeric(max_thresh) || length(max_thresh) != 1 || is.na(max_thresh))) {
+  if (!is.null(max_prevalence) &&
+        (!is.numeric(max_prevalence) || length(max_prevalence) != 1 || is.na(max_prevalence))) {
     stop("Maximum prevalence threshold must be NULL or a single non-NA number.")
   }
-  if (min_thresh <= 0 && is.null(max_thresh)) {
+  if (min_prevalence <= 0 && is.null(max_prevalence)) {
     return(with_prevalence_cutoffs(obj, 0, Inf))
   }
 
   n_samp <- ncol(obj$mat)
 
   # Lower cutoff: fraction -> smallest count reaching it; count -> as is
-  lo <- if (min_thresh < 1) ceiling(min_thresh * n_samp) else min_thresh
+  lo <- if (min_prevalence < 1) ceiling(min_prevalence * n_samp) else min_prevalence
   # Upper cutoff: fraction -> largest count not exceeding it; count -> as is
-  hi <- if (is.null(max_thresh)) Inf else if (max_thresh < 1) floor(max_thresh * n_samp) else max_thresh
+  hi <- if (is.null(max_prevalence)) {
+    Inf
+  } else if (max_prevalence < 1) {
+    floor(max_prevalence * n_samp)
+  } else {
+    max_prevalence
+  }
 
   if (hi < lo) {
     stop(sprintf("[%s] Prevalence bounds are empty: min %s > max %s samples.",

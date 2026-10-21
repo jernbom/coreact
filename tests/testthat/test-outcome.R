@@ -313,3 +313,24 @@ test_that("pairs that fall below their selection thresholds are counted", {
                    as.integer(sum(first$n10 + first$n11 < 40)))
   expect_gt(attr(out, "n_pairs_below_selection"), 0)
 })
+
+test_that("the in-memory flow filters, adjusts and passes only the co-reactive pairs on", {
+  # filter_by_prevalence() is exported, takes the pipeline's argument names,
+  # and its bounds reach the provenance
+  expect_true("filter_by_prevalence" %in% getNamespaceExports("coreact"))
+  d <- outcome_fixture(n_samples = 200, seed = 24)
+  x <- suppressMessages(filter_by_prevalence(d$x, min_prevalence = 0.1))
+  y <- suppressMessages(filter_by_prevalence(d$y, min_prevalence = 20, max_prevalence = 0.9))
+  res <- adjust_fdr(suppressMessages(run_coreact(x, y, effect_filters = list())))
+  prov <- attr(res, "provenance")
+  expect_equal(prov$x_min_prevalence_count, 20)
+  expect_equal(c(prov$y_min_prevalence_count, prov$y_max_prevalence_count), c(20, 180))
+
+  # Row-filtering on the co-occurrence FDR keeps the provenance, and the
+  # outcome step analyses exactly the pairs kept
+  sig <- res[res$p_adj <= 0.05, ]
+  expect_gt(nrow(sig), 0)
+  expect_lt(nrow(sig), nrow(res))
+  out <- suppressMessages(run_coreact_outcome(sig, x, y, outcome = d$binary))
+  expect_setequal(unique(paste(out$feature_x, out$feature_y)), paste(sig$feature_x, sig$feature_y))
+})

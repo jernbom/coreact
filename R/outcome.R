@@ -8,7 +8,11 @@
 #'
 #' @param res A result of [run_coreact()] or [coreact_pipeline()], or one read
 #'   back with [read_coreact_results()]. It must still carry its `provenance`
-#'   attribute (see Provenance below).
+#'   attribute (see Provenance below). Usually it holds the pairs that passed
+#'   the co-occurrence FDR, as [coreact_pipeline()] writes them, or
+#'   `res[res$p_adj <= 0.05, ]` after [adjust_fdr()] in memory; row-filtering
+#'   keeps the provenance. The outcome's tested family is formed over the pairs
+#'   given.
 #' @param data_x,data_y The `coreact_data` objects `res` was computed on, in the
 #'   same order. Omit `data_y` for a within-library result, as for
 #'   [run_coreact()]; supplying the same data twice is an error.
@@ -165,6 +169,10 @@
 #' x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
 #'
 #' res <- run_coreact(x)                       # pairs within one library
+#'
+#' # Usually only the pairs that pass the co-occurrence FDR go on:
+#' #   res <- adjust_fdr(res); res <- res[res$p_adj <= 0.05, ]
+#' # The example data's ten samples leave none at any threshold, so all are used.
 #'
 #' set.seed(1)
 #' outcome <- stats::setNames(stats::rbinom(ncol(x$mat), 1, 0.5), colnames(x$mat))

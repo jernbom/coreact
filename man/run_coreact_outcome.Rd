@@ -23,7 +23,11 @@ run_coreact_outcome(
 \arguments{
 \item{res}{A result of \code{\link[=run_coreact]{run_coreact()}} or \code{\link[=coreact_pipeline]{coreact_pipeline()}}, or one read
 back with \code{\link[=read_coreact_results]{read_coreact_results()}}. It must still carry its \code{provenance}
-attribute (see Provenance below).}
+attribute (see Provenance below). Usually it holds the pairs that passed
+the co-occurrence FDR, as \code{\link[=coreact_pipeline]{coreact_pipeline()}} writes them, or
+\code{res[res$p_adj <= 0.05, ]} after \code{\link[=adjust_fdr]{adjust_fdr()}} in memory; row-filtering
+keeps the provenance. The outcome's tested family is formed over the pairs
+given.}
 
 \item{data_x, data_y}{The \code{coreact_data} objects \code{res} was computed on, in the
 same order. Omit \code{data_y} for a within-library result, as for
@@ -204,6 +208,10 @@ path_x <- system.file("extdata", "input_x.tsv", package = "coreact")
 x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
 
 res <- run_coreact(x)                       # pairs within one library
+
+# Usually only the pairs that pass the co-occurrence FDR go on:
+#   res <- adjust_fdr(res); res <- res[res$p_adj <= 0.05, ]
+# The example data's ten samples leave none at any threshold, so all are used.
 
 set.seed(1)
 outcome <- stats::setNames(stats::rbinom(ncol(x$mat), 1, 0.5), colnames(x$mat))

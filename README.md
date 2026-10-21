@@ -88,12 +88,15 @@ If the data are already loaded, or you want the unadjusted statistics as a tibbl
 x <- import_coreact_tsv(path_x, meta_cols = 1:4, feature_id = "u_pep_id", name = "X")
 y <- import_coreact_tsv(path_y, meta_cols = 1:2, feature_id = c("protein_id", "gene_name"), name = "Y")
 
+x <- filter_by_prevalence(x, min_prevalence = 0.1)   # step 1, as in coreact_pipeline()
+y <- filter_by_prevalence(y, min_prevalence = 2)
+
 res <- run_coreact(x, y)           # every pair; add max_p_val = 0.05 to prune on raw p
 res <- adjust_fdr(res)             # BH over attr(res, "n_pairs") = nrow(x) * nrow(y) tests
 sig <- res[res$p_adj <= 0.05, ]
 ```
 
-`adjust_fdr()` uses the number of tested pairs as the size of the family, so pruning inside the engine (`max_p_val`, `effect_filters`) never changes the adjusted p-values of the significant pairs.
+`adjust_fdr()` uses the number of tested pairs as the size of the family, so pruning inside the engine (`max_p_val`, `effect_filters`) never changes the adjusted p-values of the significant pairs. Filter with `filter_by_prevalence()` rather than by hand: it records the bounds it applied, which then travel with the results.
 
 ### Within a single library
 
@@ -121,13 +124,16 @@ coreact_outcome_pipeline(
 
 It rebuilds the inputs from the results' provenance sidecar and checks that they are the data that was analysed. If the input files have moved since, for example with a project copied from a cluster, give their new location with `input_paths = c(new_x, new_y)`.
 
-In memory, pass the result together with the objects it was computed on and an outcome vector named by sample ID:
+In memory the flow is the same: the pairs that pass coreact's co-occurrence FDR go to the outcome step, together with the objects they were computed on and an outcome vector named by sample ID. The outcome FDR then runs over the tested contrasts of those pairs.
 
 ```r
-res <- run_coreact(x, y)
+# x, y: prevalence-filtered as above
+res <- adjust_fdr(run_coreact(x, y, max_p_val = 0.05))
+sig <- res[res$p_adj <= 0.05, ]    # the co-reactive pairs; row-filtering keeps their provenance
+
 # A stand-in outcome; yours must be named by sample ID, as colnames(x$mat)
 outcome <- setNames(rbinom(ncol(x$mat), 1, 0.5), colnames(x$mat))
-out <- run_coreact_outcome(res, x, y, outcome = outcome)
+out <- run_coreact_outcome(sig, x, y, outcome = outcome)
 out[out$role == "tested" & out$p_adj <= 0.05, ]
 ```
 
