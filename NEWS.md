@@ -29,6 +29,10 @@
   was filtered with, as counts.
   `coreact_pipeline()` adds `fdr_threshold` and the import settings of each
   input, and writes the lot next to the results as `*_provenance.tsv`.
+* `filter_by_prevalence()` is exported: step 1 of `coreact_pipeline()` for
+  objects in memory, with the pipeline's argument names. It records the bounds
+  it applied on the object it returns, as counts, so that they reach
+  `run_coreact()`'s provenance.
 * `read_coreact_results()` reads a results file back with the column types it
   had in memory and with its `n_pairs` and `provenance` attributes, so
   `adjust_fdr()` can be applied to results from disk. It could not before,

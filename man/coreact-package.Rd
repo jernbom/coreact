@@ -4,9 +4,9 @@
 \name{coreact-package}
 \alias{coreact}
 \alias{coreact-package}
-\title{coreact: High-Performance Co-Reactivity Analysis}
+\title{coreact: High-Performance Co-Reactivity Analysis and Outcome Association}
 \description{
-Optimized pipeline for calculating co-occurrence statistics (hypergeometric test, Jaccard index, overlap coefficient) between the features of two sparse binary matrices that share the same samples. Uses chunked sparse matrix algebra and fork-based parallel processing so that millions of feature pairs can be scored on a single node.
+Optimized pipeline for calculating co-occurrence statistics (hypergeometric test, Jaccard index, overlap coefficient) between the features of two sparse binary matrices that share the same samples, or within one. Uses chunked sparse matrix algebra and fork-based parallel processing so that millions of feature pairs can be scored on a single node. Co-occurring pairs can then be associated with a binary or continuous sample-level outcome: each pair is classified by which cells of its 2x2 table are occupied and tested, by likelihood ratio or F test, on the contrast that occupancy supports (the interaction where it can), with profile-likelihood intervals and false discovery rate control over the tested contrasts. Results record their provenance, so that they can be re-adjusted and analysed further from disk.
 }
 \seealso{
 Useful links:
